@@ -1,12 +1,12 @@
 {
   "name": "aframe-mesh-particles-component",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "aframe component for mesh particles",
   "main": "aframe-mesh-particles-component.js",
   "files": ["aframe-mesh-particles-component.js"],
   "repository": {
     "type": "git",
-    "url": "githug:harlyq/aframe-mesh-particles"
+    "url": "github:harlyq/aframe-mesh-particles-component"
   },
   "keywords": [
     "aframe",
