@@ -4,6 +4,8 @@ The **mesh-particles** component uses shader based geometry instancing to create
 
 For a demo goto https://harlyq.github.io/aframe-mesh-particles-component/ (bullet asset from Poly by Google)
 
+![Screenshot](assets/screenshot.jpg)
+
 ## Examples
 ```html
 <head>
@@ -11,8 +13,11 @@ For a demo goto https://harlyq.github.io/aframe-mesh-particles-component/ (bulle
   <script src="https://unpkg.com/aframe-mesh-particles-component@^0.1.0/aframe-mesh-particles-component.js"></script>
 </head>
 <body>
-  <a-gltf-model src="url(assets/bullet/bullet.gltf)" mesh-particles="velocity: .1 1 .1; acceleration: 0 -1 0..0 -2 0"></a-gltf-model>
-  <a-box position="0 -5 0" mesh-particles="radialSpeed: 1..2"></a-box>
+  <a-scene>
+    <a-gltf-model id="model" src="url(assets/banana/Banana_01.gltf)" scale="0.5 0.5 0.5" visible="false"></a-gltf-model>
+    <a-entity position="0 5 -5" mesh-particles="entity: #model; velocity: .1 1 .1; acceleration: 0 -1 0..0 -2 0"></a-entity>
+    <a-box color="red" position="0 0 -5" mesh-particles="radialSpeed: 1..2"></a-box>
+  </a-scene>
 </body>
 ```
 
