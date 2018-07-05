@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <script src="https://aframe.io/releases/0.8.2/aframe.js"></script>
+    <script src="https://unpkg.com/aframe-animation-component@^4.1.2/dist/aframe-animation-component.min.js"></script>
+    <script src="aframe-mesh-particles-component.js"></script>
+  </head>
+  <body>
+    <a-scene fog="type: linear; color: #AAA" background="color:black" stats>
+      <a-assets>
+        <img id="blob" src="assets/blob.png">
+        <model id="book" src="assets/book/model.gltf"></model>
+        <a-mixin id="label" text="align: center; width: 10" position="0 -1.5 0"></a-mixin>
+      </a-assets>
+      <a-camera position="0 0 10"></a-camera>
+      <a-entity position="-6 0 0">
+        <a-dodecahedron
+          mesh-particles="relative: world; lifeTime: 1..2; spawnRate: 4; acceleration: 0 -0.1 0; velocity: 0 1 0..0 2 0; scale: 0.3..0.6, 1..1.2; rotation: -45 -45 -45..45 45 45; opacity: 1,.8,0; color: #111,#444,white"
+          animation="dur: 5000; dir: alternate; property: position; from: -2 0 0; to: 2 0 0; easing: linear; loop: -1">
+        </a-dodecahedron>
+        <a-text mixin="label" value="world relative"></a-text>
+      </a-entity>        
+      <a-entity position="0 0 0">
+        <a-gltf-model rotation="0 45 0" src="url(assets/bullet/bullet.gltf)" mesh-particles="relative: world; spawnRate: 5; velocity: 2 0 0..4 0 0; acceleration: 0 -3 0; scale: 0.1"></a-gltf-model>
+        <a-text mixin="label" value="gltf model"></a-text>
+      </a-entity>
+      <a-entity position="6 0 0">
+        <a-box rotation="90 0 0" mesh-particles="spawnRate: 50; lifeTime: 0.5..1; spawnType: burst; radialOffset: .1; radialSpeed: 2..5; velocity: 0 0 -1..0 0 -2; acceleration: 0 0 1; scale: .1..0.3; rotation: -45 -45 -45..45 45 45; opacity: 1,1,1,1,0"></a-box>
+        <a-text mixin="label" value="radial motion"></a-text>
+      </a-entity>
+      <a-entity position="0 4 0">
+        <a-octahedron material="wireframe: true" mesh-particles="spawnRate: 10; lifeTime: 0..5; velocity: .2 .4 0; angularVelocity: 0 180 0; scale: .1,.2,.1,.2,.1; color: blue,green"></a-octahedron>
+        <a-text mixin="label" value="color over-time"></a-text>
+      </a-entity>
+      <a-entity position="-6 4 0">
+        <a-triangle material="side: double" mesh-particles="spawnRate: 10; lifeTime: 3; offset: -2 2 -2..2 2 2; acceleration: 0 -.4 0..0 -.2 0; angularVelocity: -20 0 0..20 0 0; scale: .1...25; color: red..orange; rotation: 75 -45 0..105 45 0,75 -15 0..105 15 0,90 0 0..45 45 0"></a-triangle>
+        <a-text mixin="label" value="initial offset"></a-text>
+      </a-entity>
+      <a-entity position="6 4 0">
+        <a-ring material="color: blue; side: double" rotation="90 0 0" mesh-particles="spawnRate: 0.7; lifeTime: 3; scale: 0,1; opacity: 1,0"></a-ring>
+        <a-text mixin="label" value="scale over-time"></a-text>
+      </a-entity>
+      <a-entity position="0 -4 0">
+        <a-box material="color: red; side: double" mesh-particles="spawnRate: 100; lifeTime: 1; radialOffset: 1; angularVelocity: 120 0 0..140 0 0; scale: .01...1; rotation: -45 -45 -45,720 720 720..360 360 360"></a-box>
+        <a-text mixin="label" value="angular velocity"></a-text>
+      </a-entity>
+      <a-entity position="-6 -4 0">
+        <a-plane id="raindash" material="src:#blob; transparent: true" scale="0.1 2 0.1" visible="false"></a-plane>
+        <a-entity mesh-particles="entity: #raindash; spawnRate: 50; lifeTime: 0.1..0.15; offset: -2 1 -2..2 1 2; velocity: 0 -20 0..1 -20 0; scale: .8..1.2; opacity: .4; color: #224"></a-entity>
+        <a-text mixin="label" value="use entity"></a-text>
+      </a-entity>
+      <a-entity position="6 -4 0">
+        <a-box mesh-particles="spawnRate: 2000; lifeTime: 2; radialType: sphere; radialOffset: 1; scale: .01...02; opacity: 0,1,0; color: #ddd..white"></a-box>
+        <a-text mixin="label" value="spherical"></a-text>
+      </a-entity>
+      <a-entity position="6 -8 0">
+        <a-sphere id="sphere" scale="0.2 0.2 0.2" opacity="0.5" visible="false"></a-sphere>
+        <a-torus id="torus" scale="0.2 0.2 0.2" opacity="0.5" visible="false"></a-torus>
+        <a-entity mesh-particles__1="entity: #sphere; radialSpeed: 1; color: blue" mesh-particles__2="entity: #torus; spawnType: sphere; radialSpeed: 2; radialAcceleration: -1; color: red"></a-entity>
+        <a-text mixin="label" value="multiple"></a-text>
+      </a-entity>
+
+    </a-scene>
+  </body>
+</html>

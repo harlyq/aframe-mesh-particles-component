@@ -1,0 +1,22 @@
+{
+  "name": "aframe-mesh-particles-component",
+  "version": "0.1.0",
+  "description": "aframe component for mesh particles",
+  "main": "aframe-mesh-particles-component.js",
+  "files": ["aframe-mesh-particles-component.js"],
+  "repository": {
+    "type": "git",
+    "url": "githug:harlyq/aframe-mesh-particles"
+  },
+  "keywords": [
+    "aframe",
+    "aframe-vr",
+    "aframe",
+    "component"
+  ],
+  "author": "harlyq",
+  "license": "MIT",
+  "peerDependencies": {
+    "aframe": "^0.8.2"
+  }
+}
