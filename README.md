@@ -22,6 +22,7 @@ Some of the properties are listed as type *range*, which is a minimum and maximu
 Some properties are listed as type *range array*. This provides different values over the life-time of the particle.  The first value is for when the particle is created, linearly interpolating over values, until the last value is reached at the end of the particle's life.  By default there are a maximum of 5 elements for each over-time array, but this can be changed by setting the **overTimeSlots** parameter.
 
 For example:
+
 | Property | Description | Type |
 | -------- | ----------- | ---- |
 | `lifeTime: 1` | all particles have a life time of 1 | number range |
@@ -32,6 +33,7 @@ For example:
 | ................................................................ ||.................................|
 
 The list of properties in alphabetical order:
+
 | Property | Description | Default | Type |
 | -------- | ----------- | ------- | ---- |
 | acceleration | range for acceleration of each particle in local coordinates | 0 0 0 | vec3 range |
