@@ -1,6 +1,6 @@
 {
   "name": "aframe-mesh-particles-component",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "aframe component for mesh particles",
   "main": "aframe-mesh-particles-component.js",
   "files": ["aframe-mesh-particles-component.js"],
@@ -11,8 +11,7 @@
   "keywords": [
     "aframe",
     "aframe-vr",
-    "aframe",
-    "component"
+    "aframe component"
   ],
   "author": "harlyq",
   "license": "MIT",
