@@ -11,7 +11,9 @@
   const SPAWN_RATE_PARAM = 5 // [1].y
   const SEED_PARAM = 6 // [1].z
   const PARTICLE_COUNT_PARAM = 7 // [1].w
-  const DIRECTION_PARAM = 10 // [2].x
+  const MIN_AGE_PARAM = 8 // [2].x
+  const MAX_AGE_PARAM = 9 // [2].y
+  const DIRECTION_PARAM = 10 // [2].z
 
   const RANDOM_REPEAT_COUNT = 1048576; // random numbers will start repeating after this number of particles
 
@@ -116,11 +118,14 @@
       this.emitterTime = 0
       this.lifeTime = [1,1]
       this.useTransparent = false
-      this.offset = new Float32Array(4*2).fill(0) // xyz is position, w is radialPosition
-      this.velocity = new Float32Array(4*2).fill(0) // xyz is velocity, w is radialSpeed
-      this.acceleration = new Float32Array(4*2).fill(0) // xyz is acceleration, w is radialAcceleration
-      this.angularVelocity = new Float32Array(4*2).fill(0) // xyz is angularVelocity, w is lifeTime
-      this.angularAcceleration = new Float32Array(4*2).fill(0) // xyz is angularAcceleration
+      this.offset = [0,0,0,0,0,0]
+      this.radialOffset = [0,0]
+      this.velocity = [0,0,0,0,0,0]
+      this.radialSpeed = [0,0]
+      this.acceleration = [0,0,0,0,0,0]
+      this.radialAcceleration = [0,0]
+      this.angularVelocity = [0,0,0,0,0,0]
+      this.angularAcceleration = [0,0,0,0,0,0]
       this.colorOverTime = new Float32Array(4*this.overTimeArrayLength).fill(0) // color is xyz and opacity is w
       this.rotationScaleOverTime = new Float32Array(4*this.overTimeArrayLength).fill(0) // xyz is rotation, w is scale
       this.params = new Float32Array(4*3).fill(0) // see _PARAM constants
@@ -146,6 +151,7 @@
         console.error("mesh-particles 'overTimeSlots' cannot be changed at run-time")
       }
 
+      this.params[SPAWN_TYPE_PARAM] = data.spawnType === "burst" ? 0 : 1
       this.params[RADIAL_PARAM] = data.radialType === "circle" ? 0 : 1
       this.params[DIRECTION_PARAM] = data.direction === "forward" ? 0 : 1
 
@@ -159,18 +165,18 @@
       }
 
       if (data.position !== oldData.position || data.radialPosition !== oldData.radialPosition) {
-        this.updateVec4XYZRange(data.position, "offset")
-        this.updateVec4WRange(data.radialPosition, [0], "offset")
+        this.offset = parseVecRange(data.position, [0,0,0])
+        this.radialOffset = parseVecRange(data.radialPosition, [0])
       }
 
       if (data.velocity !== oldData.velocity || data.radialSpeed !== oldData.radialSpeed) {
-        this.updateVec4XYZRange(data.velocity, "velocity")
-        this.updateVec4WRange(data.radialSpeed, [0], "velocity")
+        this.velocity = parseVecRange(data.velocity, [0,0,0])
+        this.radialSpeed = parseVecRange(data.radialSpeed, [0])
       }
 
       if (data.acceleration !== oldData.acceleration || data.radialAcceleration !== oldData.radialAcceleration) {
-        this.updateVec4XYZRange(data.acceleration, "acceleration")
-        this.updateVec4WRange(data.radialAcceleration, [0], "acceleration")
+        this.acceleration = parseVecRange(data.acceleration, [0,0,0])
+        this.radialAcceleration = parseVecRange(data.radialAcceleration, [0])
       }
 
       if (data.rotation !== oldData.rotation || data.scale !== oldData.scale) {
@@ -181,13 +187,12 @@
         this.updateColorOverTime()
       }
 
-      if (data.angularVelocity !== oldData.angularVelocity || data.lifeTime !== oldData.lifeTime) {
-        this.updateAngularVec4XYZRange(data.angularVelocity, "angularVelocity")
-        this.lifeTime = this.updateVec4WRange(data.lifeTime, [1], "angularVelocity")
+      if (data.angularVelocity !== oldData.angularVelocity) {
+        this.angularVelocity = parseVecRange(data.angularVelocity, [0,0,0]).map(degToRad)
       }
 
       if (data.angularAcceleration !== oldData.angularAcceleration) {
-        this.updateAngularVec4XYZRange(data.angularAcceleration, "angularAcceleration")
+        this.angularAcceleration = parseVecRange(data.angularAcceleration, [0,0,0]).map(degToRad)
       }
 
       if (data.duration !== oldData.duration) {
@@ -195,10 +200,12 @@
         this.emitterTime = 0 // if the duration is changed then restart the particles
       }
 
-      if (data.spawnType !== oldData.spawnType || data.spawnRate !== oldData.spawnRate || data.lifeTime !== oldData.lifeTime) {
-        this.params[SPAWN_TYPE_PARAM] = data.spawnType === "burst" ? 0 : 1
+      if (data.spawnRate !== oldData.spawnRate || data.lifeTime !== oldData.lifeTime) {
+        this.lifeTime = parseVecRange(data.lifeTime, [1])
         this.params[SPAWN_RATE_PARAM] = data.spawnRate
         this.count = Math.max(1, this.lifeTime[1]*data.spawnRate)
+        this.params[MIN_AGE_PARAM] = this.lifeTime[0]
+        this.params[MAX_AGE_PARAM] = this.lifeTime[1]
         this.params[PARTICLE_COUNT_PARAM] = this.count
         this.updateAttributes()
       }
@@ -377,33 +384,41 @@
       }
     },
 
-    updateVec4XYZRange(vecData, uniformAttr) {
-      const vecRange = parseVecRange(vecData, [0,0,0])
-      for (let i = 0, j = 0; i < vecRange.length; ) {
-        this[uniformAttr][j++] = vecRange[i++] // x
-        this[uniformAttr][j++] = vecRange[i++] // y
-        this[uniformAttr][j++] = vecRange[i++] // z
-        j++ // skip the w
+    random() {
+      if (this.seed >= 0) {
+        this.seed = (1664525*this.seed + 1013904223) % 0xffffffff
+        return this.seed/0xffffffff
+      } else {
+        return Math.random()
       }
     },
 
-    updateAngularVec4XYZRange(vecData, uniformAttr) {
-      const vecRange = parseVecRange(vecData, [0,0,0])
-      for (let i = 0, j = 0; i < vecRange.length; ) {
-        this[uniformAttr][j++] = degToRad(vecRange[i++]) // x
-        this[uniformAttr][j++] = degToRad(vecRange[i++]) // y
-        this[uniformAttr][j++] = degToRad(vecRange[i++]) // z
-        j++ // skip the w
-      }
+    randomNumber(min, max) {
+      if (min === max) return min
+      return this.random()*(max - min) + min
     },
 
-    // update just the w component
-    updateVec4WRange(floatData, def, uniformAttr) {
-      let floatRange = parseVecRange(floatData, def)
-      this[uniformAttr][3] = floatRange[0] // floatData value is packed into the 4th part of each vec4
-      this[uniformAttr][7] = floatRange[1]
+    randomDir(out) {
+      const theta = this.randomNumber(0, 2*Math.PI)
+      const omega = this.data.radialType === "sphere" ? this.randomNumber(0, 2*Math.PI) : 0
 
-      return floatRange
+      const rc = Math.cos(theta)
+      out.x = Math.cos(omega) * rc
+      out.y = Math.sin(theta)
+      out.z = Math.sin(omega) * rc
+    },
+
+    randomVec3PlusRadial(vec3Range, wRange, dir, out) {
+      const r = this.randomNumber(wRange[0], wRange[1])
+      out.x = this.randomNumber(vec3Range[0], vec3Range[3]) + dir.x*r
+      out.y = this.randomNumber(vec3Range[1], vec3Range[4]) + dir.y*r
+      out.z = this.randomNumber(vec3Range[2], vec3Range[5]) + dir.z*r
+    },
+
+    randomVec3(vec3Range, out) {
+      out.x = this.randomNumber(vec3Range[0], vec3Range[3])
+      out.y = this.randomNumber(vec3Range[1], vec3Range[4])
+      out.z = this.randomNumber(vec3Range[2], vec3Range[5])
     },
 
     updateAttributes() {
@@ -417,6 +432,11 @@
         }
 
         this.geometry.addAttribute("instanceID", new THREE.InstancedBufferAttribute(instanceIDs, 1)) // gl_InstanceID is not supported, so make our own id
+        this.geometry.addAttribute("instanceOffset", new THREE.InstancedBufferAttribute(new Float32Array(3*n).fill(0), 3))
+        this.geometry.addAttribute("instanceVelocity", new THREE.InstancedBufferAttribute(new Float32Array(3*n).fill(0), 3))
+        this.geometry.addAttribute("instanceAcceleration", new THREE.InstancedBufferAttribute(new Float32Array(3*n).fill(0), 3))
+        this.geometry.addAttribute("instanceAngularVelocity", new THREE.InstancedBufferAttribute(new Float32Array(3*n).fill(0), 3))
+        this.geometry.addAttribute("instanceAngularAcceleration", new THREE.InstancedBufferAttribute(new Float32Array(3*n).fill(0), 3))
 
         if (this.relative === "world") {
           this.geometry.addAttribute("instancePosition", new THREE.InstancedBufferAttribute(new Float32Array(3*n).fill(0), 3))
@@ -429,21 +449,38 @@
       let position = new THREE.Vector3()
       let quaternion = new THREE.Quaternion()
       let scale = new THREE.Vector3()
+      let dir = new THREE.Vector3()
+      let offset = new THREE.Vector3()
+      let velocity = new THREE.Vector3()
+      let acceleration = new THREE.Vector3()
+      let angularVelocity = new THREE.Vector3()
+      let angularAcceleration = new THREE.Vector3()
 
       return function(emitterTime) {
         const data = this.data
 
-        // for world relative particle the CPU sets the instancePosition and instanceQuaternion
-        // of the new particles to the current object3D position/orientation, and tells the GPU
-        // the ID of last emitted particle (this.params[WORLD_RELATIVE_ID_PARAM])
-        if (this.geometry && this.relative === "world") {
+        // the CPU provides the position, velocity, and acceleration parameters for each particle
+        // (it is cheaper to do this on the CPU than the GPU because the values are set when 
+        // the particles spawn)
+        if (this.geometry) {
+          const isWorldRelative = this.relative === "world"
           const spawnRate = this.data.spawnRate
           const isBurst = data.spawnType === "burst"
           const spawnDelta = isBurst ? 0 : 1/spawnRate // for burst particles spawn everything at once
 
-          let instancePosition = this.geometry.getAttribute("instancePosition")
-          let instanceQuaternion = this.geometry.getAttribute("instanceQuaternion")
-          this.el.object3D.matrixWorld.decompose(position, quaternion, scale)
+          let instancePosition
+          let instanceQuaternion
+          let instanceOffset = this.geometry.getAttribute("instanceOffset")
+          let instanceVelocity = this.geometry.getAttribute("instanceVelocity")
+          let instanceAcceleration = this.geometry.getAttribute("instanceAcceleration")
+          let instanceAngularVelocity = this.geometry.getAttribute("instanceAngularVelocity")
+          let instanceAngularAcceleration = this.geometry.getAttribute("instanceAngularAcceleration")
+
+          if (isWorldRelative) {
+            instancePosition = this.geometry.getAttribute("instancePosition")
+            instanceQuaternion = this.geometry.getAttribute("instanceQuaternion")
+            this.el.object3D.matrixWorld.decompose(position, quaternion, scale)
+          }
 
           let startID = this.nextID
           let numSpawned = 0
@@ -454,9 +491,24 @@
           // low, we may have to wait several frames before a particle is emitted, but if the 
           // spawnRate is high we will emit several particles per frame
           while (this.nextTime < emitterTime && numSpawned < this.count) {
+            this.randomDir(dir)
+            this.randomVec3PlusRadial(this.offset, this.radialOffset, dir, offset)
+            this.randomVec3PlusRadial(this.velocity, this.radialSpeed, dir, velocity)
+            this.randomVec3PlusRadial(this.acceleration, this.radialAcceleration, dir, acceleration)
+            this.randomVec3(this.angularVelocity, angularVelocity)
+            this.randomVec3(this.angularAcceleration, angularAcceleration)
+
+            if (isWorldRelative) {
+              instancePosition.setXYZ(id, position.x, position.y, position.z)
+              instanceQuaternion.setXYZW(id, quaternion.x, quaternion.y, quaternion.z, quaternion.w)
+            }
+
             id = this.nextID
-            instancePosition.setXYZ(id, position.x, position.y, position.z)
-            instanceQuaternion.setXYZW(id, quaternion.x, quaternion.y, quaternion.z, quaternion.w)
+            instanceOffset.setXYZ(id, offset.x, offset.y, offset.z)
+            instanceVelocity.setXYZ(id, velocity.x, velocity.y, velocity.z)
+            instanceAcceleration.setXYZ(id, acceleration.x, acceleration.y, acceleration.z)
+            instanceAngularVelocity.setXYZ(id, angularVelocity.x, angularVelocity.y, angularVelocity.z)
+            instanceAngularAcceleration.setXYZ(id, angularAcceleration.x, angularAcceleration.y, angularAcceleration.z)
 
             numSpawned++
             this.nextTime += spawnDelta
@@ -476,13 +528,35 @@
               numSpawned = this.count
             }
   
-            instancePosition.updateRange.offset = startID
-            instancePosition.updateRange.count = numSpawned
-            instancePosition.needsUpdate = numSpawned > 0
+            if (isWorldRelative) {
+              instancePosition.updateRange.offset = startID
+              instancePosition.updateRange.count = numSpawned
+              instancePosition.needsUpdate = numSpawned > 0
+  
+              instanceQuaternion.updateRange.offset = startID
+              instanceQuaternion.updateRange.count = numSpawned
+              instanceQuaternion.needsUpdate = numSpawned > 0
+            }
 
-            instanceQuaternion.updateRange.offset = startID
-            instanceQuaternion.updateRange.count = numSpawned
-            instanceQuaternion.needsUpdate = numSpawned > 0
+            instanceOffset.updateRange.offset = startID
+            instanceOffset.updateRange.count = numSpawned
+            instanceOffset.needsUpdate = numSpawned > 0
+
+            instanceVelocity.updateRange.offset = startID
+            instanceVelocity.updateRange.count = numSpawned
+            instanceVelocity.needsUpdate = numSpawned > 0
+
+            instanceAcceleration.updateRange.offset = startID
+            instanceAcceleration.updateRange.count = numSpawned
+            instanceAcceleration.needsUpdate = numSpawned > 0
+
+            instanceAngularVelocity.updateRange.offset = startID
+            instanceAngularVelocity.updateRange.count = numSpawned
+            instanceAngularVelocity.needsUpdate = numSpawned > 0
+
+            instanceAngularAcceleration.updateRange.offset = startID
+            instanceAngularAcceleration.updateRange.count = numSpawned
+            instanceAngularAcceleration.needsUpdate = numSpawned > 0
           }
         }
       }
@@ -490,17 +564,17 @@
 
     onBeforeCompile(shader) {
       shader.uniforms.params = { value: this.params }
-      shader.uniforms.offset = { value: this.offset }
-      shader.uniforms.velocity = { value: this.velocity }
-      shader.uniforms.acceleration = { value: this.acceleration }
-      shader.uniforms.angularVelocity = { value: this.angularVelocity }
-      shader.uniforms.angularAcceleration = { value: this.angularAcceleration }
       shader.uniforms.colorOverTime = { value: this.colorOverTime }
       shader.uniforms.rotationScaleOverTime = { value: this.rotationScaleOverTime }
 
       // WARNING these shader replacements assume that the standard three.js shders are being used
       shader.vertexShader = shader.vertexShader.replace( "void main() {", `
         attribute float instanceID;
+        attribute vec3 instanceOffset;
+        attribute vec3 instanceVelocity;
+        attribute vec3 instanceAcceleration;
+        attribute vec3 instanceAngularVelocity;
+        attribute vec3 instanceAngularAcceleration;
 
         #if defined(WORLD_RELATIVE)
         attribute vec3 instancePosition;
@@ -508,11 +582,6 @@
         #endif
 
         uniform vec4 params[3];
-        uniform vec4 offset[2];
-        uniform vec4 velocity[2];
-        uniform vec4 acceleration[2];
-        uniform vec4 angularVelocity[2];
-        uniform vec4 angularAcceleration[2];
         uniform vec4 colorOverTime[OVER_TIME_ARRAY_LENGTH];
         uniform vec4 rotationScaleOverTime[OVER_TIME_ARRAY_LENGTH];
 
@@ -532,28 +601,10 @@
           return mix( range0, range1, lerps );
         }
 
-        vec2 randVec2Range( const vec2 range0, const vec2 range1, const float seed )
-        {
-          vec2 lerps = vec2( random( seed ), random( seed ) );
-          return mix( range0, range1, lerps );
-        }
-
         float randFloatRange( const float range0, const float range1, const float seed )
         {
           float lerps = random( seed );
           return mix( range0, range1, lerps );
-        }
-
-        // theta.x is the angle in XY, theta.y is the angle in XZ
-        vec3 radialToVec3( const float r, const vec2 theta )
-        {
-          vec2 cosTheta = cos(theta);
-          vec2 sinTheta = sin(theta);
-          float rc = r * cosTheta.x;
-          float x = rc * cosTheta.y;
-          float y = r * sinTheta.x;
-          float z = rc * sinTheta.y;
-          return vec3( x, y, z );
         }
 
         // array lengths are stored in the first slot, followed by actual values from slot 1 onwards
@@ -661,21 +712,16 @@
 
         void main() {
           float time = params[0].x;
-          float worldRelativeID = params[0].y;
+          float ID0 = params[0].y;
           float radialType = params[0].z;
           float duration = params[0].w;
           float spawnType = params[1].x;
           float spawnRate = params[1].y;
           float baseSeed = params[1].z;
           float instanceCount = params[1].w;
-          float maxAge = angularVelocity[1].w; // lifeTime packed into w component of angularVelocity
-
-        #if defined(WORLD_RELATIVE)
-          // current ID is set from the CPU so we can synchronize the instancePosition and instanceQuaternion correctly
-          float ID0 = worldRelativeID; 
-        #else
-          float ID0 = floor( mod( time, maxAge ) * spawnRate ); // this will lose precision eventually
-        #endif
+          float minAge = params[2].x;
+          float maxAge = params[2].y;
+          float direction = params[2].z; // 0 is forward, 1 is backward
 
           // particles are either emitted in a burst (spawnType == 0) or spread evenly
           // throughout 0..maxAge.  We calculate the ID of the last spawned particle ID0 
@@ -694,7 +740,7 @@
           float virtualID = mod( instanceID + loop * instanceCount, float( RANDOM_REPEAT_COUNT ) );
           float seed = mod(1664525.*virtualID*(baseSeed*11.) + 1013904223., 4294967296.)/4294967296.; // we don't have enough precision in 32-bit float, but results look ok
 
-          float lifeTime = randFloatRange( angularVelocity[0].w, maxAge, seed ); 
+          float lifeTime = randFloatRange( minAge, maxAge, seed ); 
 
           // don't show particles that would be emitted after the duration
           if ( duration > 0.0 && time - age >= duration ) 
@@ -703,8 +749,6 @@
           }
           else
           {
-            float direction = params[2].z; // 0 is forward, 1 is backward
-
             age = age + direction * ( maxAge - 2.0 * age );
           }
 
@@ -718,42 +762,17 @@
 
         if ( ageRatio >= 0.0 && ageRatio <= 1.0 ) 
         {
-          vec2 radialDir = vec2( 1.0, radialType );
-
-          vec2 ANGLE_RANGE[2];
-          ANGLE_RANGE[0] = vec2( 0.0, 0.0 ) * radialDir;
-          ANGLE_RANGE[1] = vec2( 2.0*PI, 2.0*PI ) * radialDir;
-
-          vec3 p = randVec3Range( offset[0].xyz, offset[1].xyz, seed );
-          vec3 v = randVec3Range( velocity[0].xyz, velocity[1].xyz, seed );
-          vec3 a = randVec3Range( acceleration[0].xyz, acceleration[1].xyz, seed );
-
-          vec2 theta = randVec2Range( ANGLE_RANGE[0], ANGLE_RANGE[1], seed );
-
-          float pr = randFloatRange( offset[0].w, offset[1].w, seed );
-          vec3 p2 = radialToVec3( pr, theta );
-
-          float vr = randFloatRange( velocity[0].w, velocity[1].w, seed );
-          vec3 v2 = radialToVec3( vr, theta );
-
-          float ar = randFloatRange( acceleration[0].w, acceleration[1].w, seed );
-          vec3 a2 = radialToVec3( ar, theta );
-
           vec4 rotScale = calcRotationScaleOverTime( ageRatio, seed );
           vec4 rotationQuaternion = eulerToQuaternion( rotScale.xyz );
-
-          vec3 va = randVec3Range( angularVelocity[0].xyz, angularVelocity[1].xyz, seed );
-          vec3 aa = randVec3Range( angularAcceleration[0].xyz, angularAcceleration[1].xyz, seed );
-
-          vec3 rotationalVelocity = ( va + aa*age );
-          vec4 angularQuaternion = eulerToQuaternion( rotationalVelocity * age );
 
           transformed = rotScale.w * position.xyz;
           transformed = applyQuaternion( transformed, rotationQuaternion );
 
-          vec3 velocity = ( v + v2 + ( a + a2 )*age );
+          vec3 velocity = ( instanceVelocity + instanceAcceleration * age );
+          vec3 rotationalVelocity = ( instanceAngularVelocity + instanceAngularAcceleration * age );
+          vec4 angularQuaternion = eulerToQuaternion( rotationalVelocity * age );
 
-          transformed += applyQuaternion( p + p2 + velocity * age, angularQuaternion );
+          transformed += applyQuaternion( instanceOffset + velocity * age, angularQuaternion );
 
         #if defined(WORLD_RELATIVE)
         
