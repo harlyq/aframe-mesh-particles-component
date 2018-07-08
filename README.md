@@ -57,6 +57,8 @@ The list of properties in alphabetical order:
 
 **geoName** - object3D name used for the particle geometry (*string*) default mesh
 
+**geoNumber** - each particle is based upon a single mesh, however there may be multiple meshes defined in an object3D. this number determines which mesh to use. 1 for the 1st mesh, 2 for the second etc (*number*) default 1
+
 **lifeTime** - range for maximum age of each particle (*number range*) default 1
 
 **position** - range for offseting the initial particle position in local coordinates (*vec3 range*) default 0 0 0
@@ -89,7 +91,7 @@ The list of properties in alphabetical order:
 
 The number of particles to spawn is the **spawnRate** multiplied by the maximum **lifeTime** (this also applies when **spawnType** is `burst`).
 
-If an entity contains multiple meshes, only the first mesh is used for the particles.
+If an entity contains multiple meshes, the **geoNumber** represent which mesh to use for the particles (1 for the first, 2 for the second etc).
 
 If an **entity** is not specified then the object3D with the **geoName** will be used as a basis for the particles, and the original geometry will be removed.
 
@@ -101,3 +103,5 @@ If **entity** is empty, and the entity with the **mesh-particles** has **relativ
 
 Both radial and non-radial values are applied to each particle. So a particle's position will be the sum of the **offset** and **radialOffset**, similarly for velocity and acceleration.
 
+The object3d name matches the attribute name used to define the component e.g. "mesh-particles" or "mesh-particles__fire".  If the particle system is world relative, then the object3d is attached to the sceneEl, and will
+be the id name followed by the attribute name e.g. "box.mesh-particles" or "bonfire.mesh-particles__fire".  If there is no id for the particles then a unique number will be used e.g. "mesh-particles2", "mesh-particles5".

@@ -44,15 +44,15 @@
   }
 
   // find the first THREE.Mesh that is this either this object or one of it's descendants
-  const getFirstMesh = (object3D) => {
+  const getNthMesh = (object3D, n, i = 1) => {
     if (!object3D) {
       return
-    } else if (object3D instanceof THREE.Mesh) {
+    } else if (object3D instanceof THREE.Mesh && i++ == n) {
       return object3D
     }
 
     for (let child of object3D.children) {
-      let mesh = getFirstMesh(child)
+      let mesh = getNthMesh(child, n, i)
       if (mesh) return mesh
     }
   }
@@ -72,8 +72,6 @@
   // console.assert(AFRAME.utils.deepEqual(parseVecRangeArray("1,2,,,3", [10]), [1,1,2,2,10,10,10,10,3,3]))
 
   // console.assert(AFRAME.utils.deepEqual(parseColorRangeArray("black..red,blue,,#ff0..#00ffaa").map(a => a.getHexString()), ["000000","ff0000","0000ff","0000ff","ffffff","ffffff","ffff00","00ffaa"]))
-
-  let uniqueID = 0 // used to make unique IDs for world relative meshes that are registered on the scene
 
   AFRAME.registerComponent("mesh-particles", {
     schema: {
@@ -104,6 +102,7 @@
       overTimeSlots: { type: "int", default: 5 },
       frustumCulled: { default: false },
       geoName: { default: "mesh" },
+      geoNumber: { type: "int", min: 1, default: 1 },
     },
     multiple: true,
     help: "https://github.com/harlyq/aframe-mesh-particles-component",
@@ -132,11 +131,7 @@
 
     remove() {
       if (this.instancedMesh) {
-        if (this.relative === "world") {
-          this.el.sceneEl.removeObject3D(this.instancedMesh.uniqueName)
-        } else {
-          this.el.removeObject3D(this.instancedMesh.uniqueName)
-        }
+        this.parentEl.removeObject3D(this.instancedMesh.uniqueName)
       } 
     },
 
@@ -261,7 +256,7 @@
       const data = this.data
 
       // if there is no entity property then use the geo from our component
-      let mesh = getFirstMesh(data.entity ? data.entity.getObject3D(data.geoName) : this.el.getObject3D(data.geoName))
+      let mesh = getNthMesh(data.entity ? data.entity.getObject3D(data.geoName) : this.el.getObject3D(data.geoName), data.geoNumber)
 
       if (!mesh || !mesh.geometry || !mesh.material) {
         return // mesh doesn't exist or not yet loaded
@@ -296,7 +291,6 @@
       this.material.onBeforeCompile = this.onBeforeCompile
 
       this.instancedMesh = new THREE.Mesh(this.geometry, this.material)
-      this.instancedMesh.uniqueName = "instance" + uniqueID++
       this.instancedMesh.frustumCulled = data.frustumCulled
 
       if (!data.entity) {
@@ -304,12 +298,18 @@
         this.el.removeObject3D(data.geoName)
       }
 
-      if (this.relative === "world") {
-        this.el.sceneEl.setObject3D(this.instancedMesh.uniqueName, this.instancedMesh)
-      } else {
-        this.el.setObject3D(this.instancedMesh.uniqueName, this.instancedMesh)
+      this.parentEl = this.relative === "world" ? this.el.sceneEl : this.el
+      if (this.relative === "local") {
+        this.instancedMesh.uniqueName = this.attrName
+      } else if (this.el.id) { // world relative with id
+        this.instancedMesh.uniqueName = this.el.id + "." + this.attrName
+      } else { // world relative, no id
+        this.parentEl.meshParticleshUniqueID = (this.parentEl.meshParticleshUniqueID || 0) + 1
+        this.instancedMesh.uniqueName = this.attrName + (this.parentEl.meshParticleshUniqueID > 1 ? this.parentEl.meshParticleshUniqueID.toString() : "")
       }
+      // console.log(this.instancedMesh.uniqueName)
 
+      this.parentEl.setObject3D(this.instancedMesh.uniqueName, this.instancedMesh)
     },
 
     updateColorOverTime() {
@@ -724,7 +724,6 @@
           ANGLE_RANGE[0] = vec2( 0.0, 0.0 ) * radialDir;
           ANGLE_RANGE[1] = vec2( 2.0*PI, 2.0*PI ) * radialDir;
 
-          float ri = 1.0;
           vec3 p = randVec3Range( offset[0].xyz, offset[1].xyz, seed );
           vec3 v = randVec3Range( velocity[0].xyz, velocity[1].xyz, seed );
           vec3 a = randVec3Range( acceleration[0].xyz, acceleration[1].xyz, seed );
