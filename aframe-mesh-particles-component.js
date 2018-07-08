@@ -110,6 +110,8 @@
 
     init() {
       this.pauseTick = this.pauseTick.bind(this)
+      this.onBeforeCompile = this.onBeforeCompile.bind(this)
+
       this.count = 0
       this.overTimeArrayLength = this.data.overTimeSlots*2 + 1 // each slot represents 2 glsl array elements pluse one element for the length info
       this.emitterTime = 0
@@ -291,301 +293,7 @@
         delete this.material.defines.WORLD_RELATIVE
       }
 
-      this.material.onBeforeCompile = shader => {
-        shader.uniforms.params = { value: this.params }
-        shader.uniforms.offset = { value: this.offset }
-        shader.uniforms.velocity = { value: this.velocity }
-        shader.uniforms.acceleration = { value: this.acceleration }
-        shader.uniforms.angularVelocity = { value: this.angularVelocity }
-        shader.uniforms.angularAcceleration = { value: this.angularAcceleration }
-        shader.uniforms.colorOverTime = { value: this.colorOverTime }
-        shader.uniforms.rotationScaleOverTime = { value: this.rotationScaleOverTime }
-
-        // WARNING these shader replacements assume that the standard three.js shders are being used
-        shader.vertexShader = shader.vertexShader.replace( "void main() {", `
-          attribute float instanceID;
-
-          #if defined(WORLD_RELATIVE)
-          attribute vec3 instancePosition;
-          attribute vec4 instanceQuaternion;
-          #endif
-
-          uniform vec4 params[3];
-          uniform vec4 offset[2];
-          uniform vec4 velocity[2];
-          uniform vec4 acceleration[2];
-          uniform vec4 angularVelocity[2];
-          uniform vec4 angularAcceleration[2];
-          uniform vec4 colorOverTime[OVER_TIME_ARRAY_LENGTH];
-          uniform vec4 rotationScaleOverTime[OVER_TIME_ARRAY_LENGTH];
-
-          varying vec4 vInstanceColor;
-
-          // each call to random will produce a different result by varying randI
-          float randI = 0.0;
-          float random( const float seed )
-          {
-            randI += 0.001;
-            return rand( vec2( seed, randI ));
-          }
-
-          vec3 randVec3Range( const vec3 range0, const vec3 range1, const float seed )
-          {
-            vec3 lerps = vec3( random( seed ), random( seed ), random( seed ) );
-            return mix( range0, range1, lerps );
-          }
-
-          vec2 randVec2Range( const vec2 range0, const vec2 range1, const float seed )
-          {
-            vec2 lerps = vec2( random( seed ), random( seed ) );
-            return mix( range0, range1, lerps );
-          }
-
-          float randFloatRange( const float range0, const float range1, const float seed )
-          {
-            float lerps = random( seed );
-            return mix( range0, range1, lerps );
-          }
-
-          // theta.x is the angle in XY, theta.y is the angle in XZ
-          vec3 radialToVec3( const float r, const vec2 theta )
-          {
-            vec2 cosTheta = cos(theta);
-            vec2 sinTheta = sin(theta);
-            float rc = r * cosTheta.x;
-            float x = rc * cosTheta.y;
-            float y = r * sinTheta.x;
-            float z = rc * sinTheta.y;
-            return vec3( x, y, z );
-          }
-
-          // array lengths are stored in the first slot, followed by actual values from slot 1 onwards
-          // colors are packed min,max,min,max,min,max,...
-          // color is packed in xyz and opacity in w, and they may have different length arrays
-
-          vec4 calcColorOverTime( const float r, const float seed )
-          {
-            vec3 color = vec3(1.0);
-            float opacity = 1.0;
-            int colorN = int( colorOverTime[0].x );
-            int opacityN = int( colorOverTime[0].y );
-    
-            if ( colorN == 1 )
-            {
-              color = randVec3Range( colorOverTime[1].xyz, colorOverTime[2].xyz, seed );
-            }
-            else if ( colorN > 1 )
-            {
-              float ck = r * ( float( colorN ) - 1.0 );
-              float ci = floor( ck );
-              int i = int( ci )*2 + 1;
-              vec3 sColor = randVec3Range( colorOverTime[i].xyz, colorOverTime[i + 1].xyz, seed );
-              vec3 eColor = randVec3Range( colorOverTime[i + 2].xyz, colorOverTime[i + 3].xyz, seed );
-              color = mix( sColor, eColor, ck - ci );
-            }
-
-            if ( opacityN == 1 )
-            {
-              opacity = randFloatRange( colorOverTime[1].w, colorOverTime[2].w, seed );
-            }
-            else if ( opacityN > 1 )
-            {
-              float ok = r * ( float( opacityN ) - 1.0 );
-              float oi = floor( ok );
-              int j = int( oi )*2 + 1;
-              float sOpacity = randFloatRange( colorOverTime[j].w, colorOverTime[j + 1].w, seed );
-              float eOpacity = randFloatRange( colorOverTime[j + 2].w, colorOverTime[j + 3].w, seed );
-              opacity = mix( sOpacity, eOpacity, ok - oi );
-            }
-
-            return vec4( color, opacity );
-          }
-
-          // as per calcColorOverTime but euler rotation is packed in xyz and scale in w
-
-          vec4 calcRotationScaleOverTime( const float r, const float seed )
-          {
-            vec3 rotation = vec3(0.);
-            float scale = 1.0;
-            int rotationN = int( rotationScaleOverTime[0].x );
-            int scaleN = int( rotationScaleOverTime[0].y );
-
-            if ( rotationN == 1 )
-            {
-              rotation = randVec3Range( rotationScaleOverTime[1].xyz, rotationScaleOverTime[2].xyz, seed );
-            }
-            else if ( rotationN > 1 )
-            {
-              float rk = r * ( float( rotationN ) - 1.0 );
-              float ri = floor( rk );
-              int i = int( ri )*2 + 1; // *2 because each range is 2 vectors, and +1 because the first vector is for the length info
-              vec3 sRotation = randVec3Range( rotationScaleOverTime[i].xyz, rotationScaleOverTime[i + 1].xyz, seed );
-              vec3 eRotation = randVec3Range( rotationScaleOverTime[i + 2].xyz, rotationScaleOverTime[i + 3].xyz, seed );
-              rotation = mix( sRotation, eRotation, rk - ri );
-            }
-
-            if ( scaleN == 1 )
-            {
-              scale = randFloatRange( rotationScaleOverTime[1].w, rotationScaleOverTime[2].w, seed );
-            }
-            else if ( scaleN > 1 )
-            {
-              float sk = r * ( float( scaleN ) - 1.0 );
-              float si = floor( sk );
-              int j = int( si )*2 + 1; // *2 because each range is 2 vectors, and +1 because the first vector is for the length info
-              float sScale = randFloatRange( rotationScaleOverTime[j].w, rotationScaleOverTime[j + 1].w, seed );
-              float eScale = randFloatRange( rotationScaleOverTime[j + 2].w, rotationScaleOverTime[j + 3].w, seed );
-              scale = mix( sScale, eScale, sk - si );
-            }
-
-            return vec4( rotation, scale );
-          }
-
-          // assumes euler order is YXZ (standard convention for AFrame)
-          vec4 eulerToQuaternion( const vec3 euler )
-          {
-            // from https://github.com/mrdoob/three.js/blob/master/src/math/Quaternion.js
-
-            vec3 c = cos( euler * 0.5 );
-            vec3 s = sin( euler * 0.5 );
-
-            return vec4(
-              s.x * c.y * c.z + c.x * s.y * s.z,
-              c.x * s.y * c.z - s.x * c.y * s.z,
-              c.x * c.y * s.z - s.x * s.y * c.z,
-              c.x * c.y * c.z + s.x * s.y * s.z
-            );
-          }
-
-          vec3 applyQuaternion( const vec3 v, const vec4 q )
-          {
-            return v + 2.0 * cross( q.xyz, cross( q.xyz, v ) + q.w * v );
-          }
-
-          void main() {
-            float time = params[0].x;
-            float worldRelativeID = params[0].y;
-            float radialType = params[0].z;
-            float duration = params[0].w;
-            float spawnType = params[1].x;
-            float spawnRate = params[1].y;
-            float baseSeed = params[1].z;
-            float instanceCount = params[1].w;
-            float maxAge = angularVelocity[1].w; // lifeTime packed into w component of angularVelocity
-
-          #if defined(WORLD_RELATIVE)
-            // current ID is set from the CPU so we can synchronize the instancePosition and instanceQuaternion correctly
-            float ID0 = worldRelativeID; 
-          #else
-            float ID0 = floor( mod( time, maxAge ) * spawnRate ); // this will lose precision eventually
-          #endif
-
-            // particles are either emitted in a burst (spawnType == 0) or spread evenly
-            // throughout 0..maxAge.  We calculate the ID of the last spawned particle ID0 
-            // for this frame, any instance IDs after ID0 are assumed to belong to the previous loop
-
-            float loop = floor( time / maxAge ) - spawnType * (instanceID > ID0 ? 1.0 : 0.0);
-            float startTime = loop * maxAge + instanceID / spawnRate * spawnType;
-            float age = startTime >= 0.0 ? time - startTime : -1.0; // if age is -1 we won't show the particle
-
-            // we use the id as a seed for the randomizer, but because the IDs are fixed in 
-            // the range 0..instanceCount we calculate a virtual ID by taking into account
-            // the number of loops that have occurred (note, instanceIDs above ID0 are assumed 
-            // to be in the previous loop).  We use the modoulo of the RANDOM_REPEAT_COUNT to
-            // ensure that the virtualID doesn't exceed the floating point precision
-
-            float virtualID = mod( instanceID + loop * instanceCount, float( RANDOM_REPEAT_COUNT ) );
-            float seed = mod(1664525.*virtualID*(baseSeed*11.) + 1013904223., 4294967296.)/4294967296.; // we don't have enough precision in 32-bit float, but results look ok
-
-            float lifeTime = randFloatRange( angularVelocity[0].w, maxAge, seed ); 
-
-            // don't show particles that would be emitted after the duration
-            if ( duration > 0.0 && time - age >= duration ) 
-            {
-              age = -1.0;
-            }
-            else
-            {
-              float direction = params[2].z; // 0 is forward, 1 is backward
-
-              age = age + direction * ( maxAge - 2.0 * age );
-            }
-
-            // the ageRatio will be used for the lerps on over-time attributes
-            float ageRatio = age/lifeTime;
-        `)
-
-        shader.vertexShader = shader.vertexShader.replace( "#include <begin_vertex>", `
-          vec3 transformed = vec3(0.0);
-          vInstanceColor = vec4(1.0);
-
-          if ( ageRatio >= 0.0 && ageRatio <= 1.0 ) 
-          {
-            vec2 radialDir = vec2( 1.0, radialType );
-
-            vec2 ANGLE_RANGE[2];
-            ANGLE_RANGE[0] = vec2( 0.0, 0.0 ) * radialDir;
-            ANGLE_RANGE[1] = vec2( 2.0*PI, 2.0*PI ) * radialDir;
-
-            float ri = 1.0;
-            vec3 p = randVec3Range( offset[0].xyz, offset[1].xyz, seed );
-            vec3 v = randVec3Range( velocity[0].xyz, velocity[1].xyz, seed );
-            vec3 a = randVec3Range( acceleration[0].xyz, acceleration[1].xyz, seed );
-
-            vec2 theta = randVec2Range( ANGLE_RANGE[0], ANGLE_RANGE[1], seed );
-
-            float pr = randFloatRange( offset[0].w, offset[1].w, seed );
-            vec3 p2 = radialToVec3( pr, theta );
-
-            float vr = randFloatRange( velocity[0].w, velocity[1].w, seed );
-            vec3 v2 = radialToVec3( vr, theta );
-
-            float ar = randFloatRange( acceleration[0].w, acceleration[1].w, seed );
-            vec3 a2 = radialToVec3( ar, theta );
-
-            vec4 rotScale = calcRotationScaleOverTime( ageRatio, seed );
-            vec4 rotationQuaternion = eulerToQuaternion( rotScale.xyz );
-
-            vec3 va = randVec3Range( angularVelocity[0].xyz, angularVelocity[1].xyz, seed );
-            vec3 aa = randVec3Range( angularAcceleration[0].xyz, angularAcceleration[1].xyz, seed );
-
-            vec3 rotationalVelocity = ( va + aa*age );
-            vec4 angularQuaternion = eulerToQuaternion( rotationalVelocity * age );
-
-            transformed = rotScale.w * position.xyz;
-            transformed = applyQuaternion( transformed, rotationQuaternion );
-
-            vec3 velocity = ( v + v2 + ( a + a2 )*age );
-
-            transformed += applyQuaternion( p + p2 + velocity * age, angularQuaternion );
-
-          #if defined(WORLD_RELATIVE)
-          
-            transformed += 2.0 * cross( instanceQuaternion.xyz, cross( instanceQuaternion.xyz, transformed ) + instanceQuaternion.w * transformed );
-            transformed += instancePosition;
-
-          #endif
-
-            vInstanceColor = calcColorOverTime( ageRatio, seed ); // rgba format
-          }
-        `)
-
-        shader.fragmentShader = shader.fragmentShader.replace( "void main() {", `
-          varying vec4 vInstanceColor;
-
-          void main() {
-        `)
-
-        shader.fragmentShader = shader.fragmentShader.replace( "#include <color_fragment>", `
-        #ifdef USE_COLOR
-          diffuseColor.rgb *= vColor;
-        #endif
-
-          diffuseColor *= vInstanceColor;
-        `)
-
-        this.shader = shader
-      }
+      this.material.onBeforeCompile = this.onBeforeCompile
 
       this.instancedMesh = new THREE.Mesh(this.geometry, this.material)
       this.instancedMesh.uniqueName = "instance" + uniqueID++
@@ -779,6 +487,302 @@
         }
       }
     })(),
+
+    onBeforeCompile(shader) {
+      shader.uniforms.params = { value: this.params }
+      shader.uniforms.offset = { value: this.offset }
+      shader.uniforms.velocity = { value: this.velocity }
+      shader.uniforms.acceleration = { value: this.acceleration }
+      shader.uniforms.angularVelocity = { value: this.angularVelocity }
+      shader.uniforms.angularAcceleration = { value: this.angularAcceleration }
+      shader.uniforms.colorOverTime = { value: this.colorOverTime }
+      shader.uniforms.rotationScaleOverTime = { value: this.rotationScaleOverTime }
+
+      // WARNING these shader replacements assume that the standard three.js shders are being used
+      shader.vertexShader = shader.vertexShader.replace( "void main() {", `
+        attribute float instanceID;
+
+        #if defined(WORLD_RELATIVE)
+        attribute vec3 instancePosition;
+        attribute vec4 instanceQuaternion;
+        #endif
+
+        uniform vec4 params[3];
+        uniform vec4 offset[2];
+        uniform vec4 velocity[2];
+        uniform vec4 acceleration[2];
+        uniform vec4 angularVelocity[2];
+        uniform vec4 angularAcceleration[2];
+        uniform vec4 colorOverTime[OVER_TIME_ARRAY_LENGTH];
+        uniform vec4 rotationScaleOverTime[OVER_TIME_ARRAY_LENGTH];
+
+        varying vec4 vInstanceColor;
+
+        // each call to random will produce a different result by varying randI
+        float randI = 0.0;
+        float random( const float seed )
+        {
+          randI += 0.001;
+          return rand( vec2( seed, randI ));
+        }
+
+        vec3 randVec3Range( const vec3 range0, const vec3 range1, const float seed )
+        {
+          vec3 lerps = vec3( random( seed ), random( seed ), random( seed ) );
+          return mix( range0, range1, lerps );
+        }
+
+        vec2 randVec2Range( const vec2 range0, const vec2 range1, const float seed )
+        {
+          vec2 lerps = vec2( random( seed ), random( seed ) );
+          return mix( range0, range1, lerps );
+        }
+
+        float randFloatRange( const float range0, const float range1, const float seed )
+        {
+          float lerps = random( seed );
+          return mix( range0, range1, lerps );
+        }
+
+        // theta.x is the angle in XY, theta.y is the angle in XZ
+        vec3 radialToVec3( const float r, const vec2 theta )
+        {
+          vec2 cosTheta = cos(theta);
+          vec2 sinTheta = sin(theta);
+          float rc = r * cosTheta.x;
+          float x = rc * cosTheta.y;
+          float y = r * sinTheta.x;
+          float z = rc * sinTheta.y;
+          return vec3( x, y, z );
+        }
+
+        // array lengths are stored in the first slot, followed by actual values from slot 1 onwards
+        // colors are packed min,max,min,max,min,max,...
+        // color is packed in xyz and opacity in w, and they may have different length arrays
+
+        vec4 calcColorOverTime( const float r, const float seed )
+        {
+          vec3 color = vec3(1.0);
+          float opacity = 1.0;
+          int colorN = int( colorOverTime[0].x );
+          int opacityN = int( colorOverTime[0].y );
+  
+          if ( colorN == 1 )
+          {
+            color = randVec3Range( colorOverTime[1].xyz, colorOverTime[2].xyz, seed );
+          }
+          else if ( colorN > 1 )
+          {
+            float ck = r * ( float( colorN ) - 1.0 );
+            float ci = floor( ck );
+            int i = int( ci )*2 + 1;
+            vec3 sColor = randVec3Range( colorOverTime[i].xyz, colorOverTime[i + 1].xyz, seed );
+            vec3 eColor = randVec3Range( colorOverTime[i + 2].xyz, colorOverTime[i + 3].xyz, seed );
+            color = mix( sColor, eColor, ck - ci );
+          }
+
+          if ( opacityN == 1 )
+          {
+            opacity = randFloatRange( colorOverTime[1].w, colorOverTime[2].w, seed );
+          }
+          else if ( opacityN > 1 )
+          {
+            float ok = r * ( float( opacityN ) - 1.0 );
+            float oi = floor( ok );
+            int j = int( oi )*2 + 1;
+            float sOpacity = randFloatRange( colorOverTime[j].w, colorOverTime[j + 1].w, seed );
+            float eOpacity = randFloatRange( colorOverTime[j + 2].w, colorOverTime[j + 3].w, seed );
+            opacity = mix( sOpacity, eOpacity, ok - oi );
+          }
+
+          return vec4( color, opacity );
+        }
+
+        // as per calcColorOverTime but euler rotation is packed in xyz and scale in w
+
+        vec4 calcRotationScaleOverTime( const float r, const float seed )
+        {
+          vec3 rotation = vec3(0.);
+          float scale = 1.0;
+          int rotationN = int( rotationScaleOverTime[0].x );
+          int scaleN = int( rotationScaleOverTime[0].y );
+
+          if ( rotationN == 1 )
+          {
+            rotation = randVec3Range( rotationScaleOverTime[1].xyz, rotationScaleOverTime[2].xyz, seed );
+          }
+          else if ( rotationN > 1 )
+          {
+            float rk = r * ( float( rotationN ) - 1.0 );
+            float ri = floor( rk );
+            int i = int( ri )*2 + 1; // *2 because each range is 2 vectors, and +1 because the first vector is for the length info
+            vec3 sRotation = randVec3Range( rotationScaleOverTime[i].xyz, rotationScaleOverTime[i + 1].xyz, seed );
+            vec3 eRotation = randVec3Range( rotationScaleOverTime[i + 2].xyz, rotationScaleOverTime[i + 3].xyz, seed );
+            rotation = mix( sRotation, eRotation, rk - ri );
+          }
+
+          if ( scaleN == 1 )
+          {
+            scale = randFloatRange( rotationScaleOverTime[1].w, rotationScaleOverTime[2].w, seed );
+          }
+          else if ( scaleN > 1 )
+          {
+            float sk = r * ( float( scaleN ) - 1.0 );
+            float si = floor( sk );
+            int j = int( si )*2 + 1; // *2 because each range is 2 vectors, and +1 because the first vector is for the length info
+            float sScale = randFloatRange( rotationScaleOverTime[j].w, rotationScaleOverTime[j + 1].w, seed );
+            float eScale = randFloatRange( rotationScaleOverTime[j + 2].w, rotationScaleOverTime[j + 3].w, seed );
+            scale = mix( sScale, eScale, sk - si );
+          }
+
+          return vec4( rotation, scale );
+        }
+
+        // assumes euler order is YXZ (standard convention for AFrame)
+        vec4 eulerToQuaternion( const vec3 euler )
+        {
+          // from https://github.com/mrdoob/three.js/blob/master/src/math/Quaternion.js
+
+          vec3 c = cos( euler * 0.5 );
+          vec3 s = sin( euler * 0.5 );
+
+          return vec4(
+            s.x * c.y * c.z + c.x * s.y * s.z,
+            c.x * s.y * c.z - s.x * c.y * s.z,
+            c.x * c.y * s.z - s.x * s.y * c.z,
+            c.x * c.y * c.z + s.x * s.y * s.z
+          );
+        }
+
+        vec3 applyQuaternion( const vec3 v, const vec4 q )
+        {
+          return v + 2.0 * cross( q.xyz, cross( q.xyz, v ) + q.w * v );
+        }
+
+        void main() {
+          float time = params[0].x;
+          float worldRelativeID = params[0].y;
+          float radialType = params[0].z;
+          float duration = params[0].w;
+          float spawnType = params[1].x;
+          float spawnRate = params[1].y;
+          float baseSeed = params[1].z;
+          float instanceCount = params[1].w;
+          float maxAge = angularVelocity[1].w; // lifeTime packed into w component of angularVelocity
+
+        #if defined(WORLD_RELATIVE)
+          // current ID is set from the CPU so we can synchronize the instancePosition and instanceQuaternion correctly
+          float ID0 = worldRelativeID; 
+        #else
+          float ID0 = floor( mod( time, maxAge ) * spawnRate ); // this will lose precision eventually
+        #endif
+
+          // particles are either emitted in a burst (spawnType == 0) or spread evenly
+          // throughout 0..maxAge.  We calculate the ID of the last spawned particle ID0 
+          // for this frame, any instance IDs after ID0 are assumed to belong to the previous loop
+
+          float loop = floor( time / maxAge ) - spawnType * (instanceID > ID0 ? 1.0 : 0.0);
+          float startTime = loop * maxAge + instanceID / spawnRate * spawnType;
+          float age = startTime >= 0.0 ? time - startTime : -1.0; // if age is -1 we won't show the particle
+
+          // we use the id as a seed for the randomizer, but because the IDs are fixed in 
+          // the range 0..instanceCount we calculate a virtual ID by taking into account
+          // the number of loops that have occurred (note, instanceIDs above ID0 are assumed 
+          // to be in the previous loop).  We use the modoulo of the RANDOM_REPEAT_COUNT to
+          // ensure that the virtualID doesn't exceed the floating point precision
+
+          float virtualID = mod( instanceID + loop * instanceCount, float( RANDOM_REPEAT_COUNT ) );
+          float seed = mod(1664525.*virtualID*(baseSeed*11.) + 1013904223., 4294967296.)/4294967296.; // we don't have enough precision in 32-bit float, but results look ok
+
+          float lifeTime = randFloatRange( angularVelocity[0].w, maxAge, seed ); 
+
+          // don't show particles that would be emitted after the duration
+          if ( duration > 0.0 && time - age >= duration ) 
+          {
+            age = -1.0;
+          }
+          else
+          {
+            float direction = params[2].z; // 0 is forward, 1 is backward
+
+            age = age + direction * ( maxAge - 2.0 * age );
+          }
+
+          // the ageRatio will be used for the lerps on over-time attributes
+          float ageRatio = age/lifeTime;
+      `)
+
+      shader.vertexShader = shader.vertexShader.replace( "#include <begin_vertex>", `
+        vec3 transformed = vec3(0.0);
+        vInstanceColor = vec4(1.0);
+
+        if ( ageRatio >= 0.0 && ageRatio <= 1.0 ) 
+        {
+          vec2 radialDir = vec2( 1.0, radialType );
+
+          vec2 ANGLE_RANGE[2];
+          ANGLE_RANGE[0] = vec2( 0.0, 0.0 ) * radialDir;
+          ANGLE_RANGE[1] = vec2( 2.0*PI, 2.0*PI ) * radialDir;
+
+          float ri = 1.0;
+          vec3 p = randVec3Range( offset[0].xyz, offset[1].xyz, seed );
+          vec3 v = randVec3Range( velocity[0].xyz, velocity[1].xyz, seed );
+          vec3 a = randVec3Range( acceleration[0].xyz, acceleration[1].xyz, seed );
+
+          vec2 theta = randVec2Range( ANGLE_RANGE[0], ANGLE_RANGE[1], seed );
+
+          float pr = randFloatRange( offset[0].w, offset[1].w, seed );
+          vec3 p2 = radialToVec3( pr, theta );
+
+          float vr = randFloatRange( velocity[0].w, velocity[1].w, seed );
+          vec3 v2 = radialToVec3( vr, theta );
+
+          float ar = randFloatRange( acceleration[0].w, acceleration[1].w, seed );
+          vec3 a2 = radialToVec3( ar, theta );
+
+          vec4 rotScale = calcRotationScaleOverTime( ageRatio, seed );
+          vec4 rotationQuaternion = eulerToQuaternion( rotScale.xyz );
+
+          vec3 va = randVec3Range( angularVelocity[0].xyz, angularVelocity[1].xyz, seed );
+          vec3 aa = randVec3Range( angularAcceleration[0].xyz, angularAcceleration[1].xyz, seed );
+
+          vec3 rotationalVelocity = ( va + aa*age );
+          vec4 angularQuaternion = eulerToQuaternion( rotationalVelocity * age );
+
+          transformed = rotScale.w * position.xyz;
+          transformed = applyQuaternion( transformed, rotationQuaternion );
+
+          vec3 velocity = ( v + v2 + ( a + a2 )*age );
+
+          transformed += applyQuaternion( p + p2 + velocity * age, angularQuaternion );
+
+        #if defined(WORLD_RELATIVE)
+        
+          transformed += 2.0 * cross( instanceQuaternion.xyz, cross( instanceQuaternion.xyz, transformed ) + instanceQuaternion.w * transformed );
+          transformed += instancePosition;
+
+        #endif
+
+          vInstanceColor = calcColorOverTime( ageRatio, seed ); // rgba format
+        }
+      `)
+
+      shader.fragmentShader = shader.fragmentShader.replace( "void main() {", `
+        varying vec4 vInstanceColor;
+
+        void main() {
+      `)
+
+      shader.fragmentShader = shader.fragmentShader.replace( "#include <color_fragment>", `
+      #ifdef USE_COLOR
+        diffuseColor.rgb *= vColor;
+      #endif
+
+        diffuseColor *= vInstanceColor;
+      `)
+
+      this.shader = shader
+    },
   })
 
 })()
