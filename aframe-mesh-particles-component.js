@@ -15,7 +15,7 @@
   const MAX_AGE_PARAM = 9 // [2].y
   const DIRECTION_PARAM = 10 // [2].z
 
-  const RANDOM_REPEAT_COUNT = 1048576; // random numbers will start repeating after this number of particles
+  const RANDOM_REPEAT_COUNT = 262144; // random numbers will start repeating after this number of particles
 
   const degToRad = THREE.Math.degToRad
 
