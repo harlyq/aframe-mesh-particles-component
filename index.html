@@ -25,7 +25,7 @@
           <a-text mixin="label" value="gltf model"></a-text>
         </a-entity>
         <a-entity position="6 0 0">
-          <a-box rotation="90 0 0" mesh-particles="spawnRate: 50; lifeTime: 0.5..1; spawnType: burst; radialPosition: .1; radialSpeed: 2..5; velocity: 0 0 -1..0 0 -2; acceleration: 0 0 1; scale: .1..0.3; rotation: -45 -45 -45..45 45 45; opacity: 1,1,1,1,0"></a-box>
+          <a-box rotation="90 0 0" mesh-particles="spawnRate: 50; lifeTime: 0.5..1; spawnType: burst; radialPosition: .1; radialVelocity: 2..5; velocity: 0 0 -1..0 0 -2; acceleration: 0 0 1; scale: .1..0.3; rotation: -45 -45 -45..45 45 45; opacity: 1,1,1,1,0"></a-box>
           <a-text mixin="label" value="radial motion"></a-text>
         </a-entity>
         <a-entity position="0 4 0">
@@ -56,11 +56,11 @@
         <a-entity position="6 -8 0">
           <a-sphere id="sphere" scale="0.2 0.2 0.2" opacity="0.5" visible="false"></a-sphere>
           <a-torus id="torus" scale="0.2 0.2 0.2" opacity="0.5" visible="false"></a-torus>
-          <a-entity mesh-particles__1="entity: #sphere; radialSpeed: 1; color: blue" mesh-particles__2="entity: #torus; spawnType: sphere; radialSpeed: 2; radialAcceleration: -1; color: red"></a-entity>
+          <a-entity mesh-particles__1="entity: #sphere; radialVelocity: 1; color: blue" mesh-particles__2="entity: #torus; spawnType: sphere; radialVelocity: 2; radialAcceleration: -1; color: red"></a-entity>
           <a-text mixin="label" value="multiple"></a-text>
         </a-entity>
         <a-entity position="0 -8 0">
-          <a-box rotation="90 0 0" mesh-particles="direction: backwards; spawnRate: 50; lifeTime: 0.5..1; spawnType: burst; radialPosition: .1; radialSpeed: 2..5; velocity: 0 0 -1..0 0 -2; acceleration: 0 0 1; scale: .1..0.3; rotation: -45 -45 -45..45 45 45; opacity: 1,1,1,1,0"></a-box>
+          <a-box rotation="90 0 0" mesh-particles="direction: backwards; spawnRate: 50; lifeTime: 0.5..1; spawnType: burst; radialPosition: .1; radialVelocity: 2..5; velocity: 0 0 -1..0 0 -2; acceleration: 0 0 1; scale: .1..0.3; rotation: -45 -45 -45..45 45 45; opacity: 1,1,1,1,0"></a-box>
           <a-text mixin="label" value="backwards radial motion"></a-text>
         </a-entity>
       </a-entity>

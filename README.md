@@ -10,13 +10,13 @@ The **mesh-particles** component uses shader based geometry instancing to create
 ```html
 <head>
   <script src="https://aframe.io/releases/0.8.2/aframe.min.js"></script>
-  <script src="https://unpkg.com/aframe-mesh-particles-component@^0.3.0/aframe-mesh-particles-component.js"></script>
+  <script src="https://unpkg.com/aframe-mesh-particles-component@^0.4.0/aframe-mesh-particles-component.js"></script>
 </head>
 <body>
   <a-scene>
     <a-gltf-model id="model" src="url(assets/banana/CHAHIN_BANANA.gltf)" scale="0.5 0.5 0.5" visible="false"></a-gltf-model>
     <a-entity position="0 5 -5" mesh-particles="entity: #model; velocity: .1 1 .1; acceleration: 0 -1 0..0 -2 0"></a-entity>
-    <a-box color="red" position="0 0 -5" mesh-particles="radialSpeed: 1..2"></a-box>
+    <a-box color="red" position="0 0 -5" mesh-particles="radialVelocity: 1..2"></a-box>
   </a-scene>
 </body>
 ```
@@ -77,7 +77,7 @@ The list of properties in alphabetical order:
 
 **radialType** - shape for radial parameters, either a circle in XY or a sphere (*circle, sphere*) default circle
 
-**radialSpeed** - range for a radial speed from the local origin (*number range*) default 0
+**radialVelocity** - range for a radial speed from the local origin (*number range*) default 0
 
 **relative** - if local, all particles move relative to the entity. if world, new particles are spawned at the current entity position, but spawned particles are not affected by the entities' movement (cannot be changed at run-time) (*world, local*) default local
 

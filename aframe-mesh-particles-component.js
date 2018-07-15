@@ -93,7 +93,7 @@
       acceleration: { default: "0 0 0" },
       radialType: { default: "circle", oneOf: ["circle", "sphere"], parse: toLowerCase },
       radialPosition: { default: "0" },
-      radialSpeed: { default: "0" },
+      radialVelocity: { default: "0" },
       radialAcceleration: { default: "0" },
       angularVelocity: { default: "0 0 0" },
       angularAcceleration: { default: "0 0 0" },
@@ -125,7 +125,7 @@
       this.offset = [0,0,0,0,0,0]
       this.radialOffset = [0,0]
       this.velocity = [0,0,0,0,0,0]
-      this.radialSpeed = [0,0]
+      this.radialVelocity = [0,0]
       this.acceleration = [0,0,0,0,0,0]
       this.radialAcceleration = [0,0]
       this.angularVelocity = [0,0,0,0,0,0]
@@ -175,9 +175,9 @@
         boundsDirty = true
       }
 
-      if (data.velocity !== oldData.velocity || data.radialSpeed !== oldData.radialSpeed) {
+      if (data.velocity !== oldData.velocity || data.radialVelocity !== oldData.radialVelocity) {
         this.velocity = parseVecRange(data.velocity, [0,0,0])
-        this.radialSpeed = parseVecRange(data.radialSpeed, [0])
+        this.radialVelocity = parseVecRange(data.radialVelocity, [0])
         boundsDirty = true
       }
 
@@ -491,10 +491,10 @@
         }
 
         const radialOffset = compareFn(this.radialOffset[0], this.radialOffset[1])
-        const radialSpeed = compareFn(this.radialSpeed[0], this.radialSpeed[1])
+        const radialVelocity = compareFn(this.radialVelocity[0], this.radialVelocity[1])
         const radialAcceleration = compareFn(this.radialAcceleration[0], this.radialAcceleration[1])
 
-        radialExtent[j] = calcExtent(radialOffset, radialSpeed, radialAcceleration, maxAge, compareFn)
+        radialExtent[j] = calcExtent(radialOffset, radialVelocity, radialAcceleration, maxAge, compareFn)
       }
 
       // apply the radial extents to the XYZ extents
@@ -581,7 +581,7 @@
           while (this.nextTime < emitterTime && numSpawned < this.count) {
             this.randomDir(dir)
             this.randomVec3PlusRadial(this.offset, this.radialOffset, dir, offset)
-            this.randomVec3PlusRadial(this.velocity, this.radialSpeed, dir, velocity)
+            this.randomVec3PlusRadial(this.velocity, this.radialVelocity, dir, velocity)
             this.randomVec3PlusRadial(this.acceleration, this.radialAcceleration, dir, acceleration)
             this.randomVec3(this.angularVelocity, angularVelocity)
             this.randomVec3(this.angularAcceleration, angularAcceleration)
