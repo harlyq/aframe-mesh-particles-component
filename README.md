@@ -2,7 +2,7 @@
 
 The **mesh-particles** component uses shader based geometry instancing to create a set of particles from an entities' mesh geometry.  The particles start spawning once the component is created (and the mesh is available), and will continue until the **duration** expires. Properties can be used to define the position, velocity, acceleration, color, scale and rotation of the particles.
 
-For a demo goto https://harlyq.github.io/aframe-mesh-particles-component/ (banana asset from Poly by Google)
+[See a demo](https://harlyq.github.io/aframe-mesh-particles-component/) (banana asset from Poly by Google)
 
 ![Screenshot](assets/screenshot.jpg)
 
@@ -10,7 +10,7 @@ For a demo goto https://harlyq.github.io/aframe-mesh-particles-component/ (banan
 ```html
 <head>
   <script src="https://aframe.io/releases/0.8.2/aframe.min.js"></script>
-  <script src="https://unpkg.com/aframe-mesh-particles-component@^0.2.0/aframe-mesh-particles-component.js"></script>
+  <script src="https://unpkg.com/aframe-mesh-particles-component@^0.3.0/aframe-mesh-particles-component.js"></script>
 </head>
 <body>
   <a-scene>
@@ -51,9 +51,13 @@ The list of properties in alphabetical order:
 
 **duration** - no new particles will be generated after this duration (seconds). if negative, particles are generated forever. changing the duration will restart the particle system (number) defualt -1
 
+**editorObject** - if true, provide a bounding box which is viewable in the editor (does not work for world relative particles) (*boolean*) default false
+
 **enableInEditor** - if true, the particle system will run while the AFrame Inspector is active (*boolean*) default false
 
 **entity** - entity which contains the geometry for the particle. if no entity is specified use this component's entity (*selector*) default null
+
+**frustumCulled** - if false, then always render the particle system, even if outside of the camera view. This is useful for world relative particle systems that move around a lot, because the bounds are only associated with the current position, and not any prior positions (*boolean*) default true
 
 **geoName** - object3D name used for the particle geometry (*string*) default mesh
 
@@ -104,4 +108,4 @@ If **entity** is empty, and the entity with the **mesh-particles** has **relativ
 Both radial and non-radial values are applied to each particle. So a particle's position will be the sum of the **offset** and **radialOffset**, similarly for velocity and acceleration.
 
 The object3d name matches the attribute name used to define the component e.g. "mesh-particles" or "mesh-particles__fire".  If the particle system is world relative, then the object3d is attached to the sceneEl, and will
-be the id name followed by the attribute name e.g. "box.mesh-particles" or "bonfire.mesh-particles__fire".  If there is no id for the particles then a unique number will be used e.g. "mesh-particles2", "mesh-particles5".
+be the id name followed by the attribute name e.g. "box_mesh-particles" or "bonfire_mesh-particles__fire".  If there is no id for the particles then a unique number will be used e.g. "mesh-particles2", "mesh-particles5".

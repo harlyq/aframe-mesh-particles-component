@@ -24,7 +24,10 @@
 
   // Convert a vector range string into an array of elements. def defines the default elements for each vector
   const parseVecRange = (str, def) => {
-    let parts = str.split("..").map(a => a.trim().split(" ").map(b => b !== "" ? Number(b) : undefined))
+    let parts = str.split("..").map(a => a.trim().split(" ").map(b => {
+      const num = Number(b)
+      return isNaN(num) ? undefined : num
+    }))
     if (parts.length === 1) parts[1] = parts[0] // if there is no second part then copy the first part
     parts.length = 2
     return flattenDeep( parts.map(a => def.map((x,i) => typeof a[i] === "undefined" ? x : a[i])) )
@@ -102,9 +105,10 @@
       direction: { default: "forward", oneOf: ["forward", "backward"], parse: toLowerCase },
       seed: { type: "float", default: -1 },
       overTimeSlots: { type: "int", default: 5 },
-      frustumCulled: { default: false },
+      frustumCulled: { default: true },
       geoName: { default: "mesh" },
       geoNumber: { type: "int", min: 1, default: 1 },
+      editorObject: { default: false },
     },
     multiple: true,
     help: "https://github.com/harlyq/aframe-mesh-particles-component",
@@ -136,13 +140,14 @@
 
     remove() {
       if (this.instancedMesh) {
-        this.parentEl.removeObject3D(this.instancedMesh.uniqueName)
+        this.parentEl.removeObject3D(this.instancedMesh.name)
       } 
     },
 
     update(oldData) {
       const data = this.data
-      
+      let boundsDirty = (data.editorObject !== oldData.editorObject)
+
       if (data.relative !== this.relative) {
         console.error("mesh-particles 'relative' cannot be changed at run-time")
       }
@@ -167,16 +172,19 @@
       if (data.position !== oldData.position || data.radialPosition !== oldData.radialPosition) {
         this.offset = parseVecRange(data.position, [0,0,0])
         this.radialOffset = parseVecRange(data.radialPosition, [0])
+        boundsDirty = true
       }
 
       if (data.velocity !== oldData.velocity || data.radialSpeed !== oldData.radialSpeed) {
         this.velocity = parseVecRange(data.velocity, [0,0,0])
         this.radialSpeed = parseVecRange(data.radialSpeed, [0])
+        boundsDirty = true
       }
 
       if (data.acceleration !== oldData.acceleration || data.radialAcceleration !== oldData.radialAcceleration) {
         this.acceleration = parseVecRange(data.acceleration, [0,0,0])
         this.radialAcceleration = parseVecRange(data.radialAcceleration, [0])
+        boundsDirty = true
       }
 
       if (data.rotation !== oldData.rotation || data.scale !== oldData.scale) {
@@ -212,6 +220,10 @@
 
       if (data.enableInEditor !== oldData.enableInEditor) {
         this.enablePauseTick(data.enableInEditor)
+      }
+
+      if (boundsDirty && this.geometry) {
+        this.updateBounds()
       }
     },
 
@@ -307,16 +319,18 @@
 
       this.parentEl = this.relative === "world" ? this.el.sceneEl : this.el
       if (this.relative === "local") {
-        this.instancedMesh.uniqueName = this.attrName
+        this.instancedMesh.name = this.attrName
       } else if (this.el.id) { // world relative with id
-        this.instancedMesh.uniqueName = this.el.id + "." + this.attrName
+        this.instancedMesh.name = this.el.id + "_" + this.attrName
       } else { // world relative, no id
         this.parentEl.meshParticleshUniqueID = (this.parentEl.meshParticleshUniqueID || 0) + 1
-        this.instancedMesh.uniqueName = this.attrName + (this.parentEl.meshParticleshUniqueID > 1 ? this.parentEl.meshParticleshUniqueID.toString() : "")
+        this.instancedMesh.name = this.attrName + (this.parentEl.meshParticleshUniqueID > 1 ? this.parentEl.meshParticleshUniqueID.toString() : "")
       }
-      // console.log(this.instancedMesh.uniqueName)
+      // console.log(this.instancedMesh.name)
 
-      this.parentEl.setObject3D(this.instancedMesh.uniqueName, this.instancedMesh)
+      this.parentEl.setObject3D(this.instancedMesh.name, this.instancedMesh)
+
+      this.updateBounds()
     },
 
     updateColorOverTime() {
@@ -445,6 +459,78 @@
       }
     },
 
+    updateBounds() {
+      const data = this.data
+      const maxAge = Math.max(this.lifeTime[0], this.lifeTime[1])
+      const STRIDE = 3
+      let extent = [new Array(STRIDE).fill(0), new Array(STRIDE).fill(0)] // extent[0] = min values, extent[1] = max values
+      let radialExtent = [0,0]
+
+      const calcExtent = (offset, velocity, acceleration, t, compareFn) => {
+        let extent = offset + (velocity + 0.5 * acceleration * t) * t
+        extent = compareFn(extent, offset)
+
+        const turningPoint = -velocity/acceleration
+        if (turningPoint > 0 && turningPoint < t) {
+          extent = compare(extent, offset - 0.5*velocity*velocity/acceleration)
+        }
+
+        return extent
+      }
+
+      // Use offset, velocity and acceleration to determine the extents for the particles
+      for (let j = 0; j < 2; j++) { // index for extent
+        const compareFn = j === 0 ? Math.min: Math.max
+
+        for (let i = 0; i < STRIDE; i++) { // 0 = x, 1 = y, 2 = z, 3 = radial
+          const offset = compareFn(this.offset[i], this.offset[i + STRIDE])
+          const velocity = compareFn(this.velocity[i], this.velocity[i + STRIDE])
+          const acceleration = compareFn(this.acceleration[i], this.acceleration[i + STRIDE])
+
+          extent[j][i] = calcExtent(offset, velocity, acceleration, maxAge, compareFn)
+        }
+
+        const radialOffset = compareFn(this.radialOffset[0], this.radialOffset[1])
+        const radialSpeed = compareFn(this.radialSpeed[0], this.radialSpeed[1])
+        const radialAcceleration = compareFn(this.radialAcceleration[0], this.radialAcceleration[1])
+
+        radialExtent[j] = calcExtent(radialOffset, radialSpeed, radialAcceleration, maxAge, compareFn)
+      }
+
+      // apply the radial extents to the XYZ extents
+      const maxRadial = Math.max(Math.abs(radialExtent[0]), Math.abs(radialExtent[1]))
+      extent[0][0] -= maxRadial
+      extent[0][1] -= maxRadial
+      extent[0][2] -= data.radialType === "sphere" ? maxRadial : 0
+      extent[1][0] += maxRadial
+      extent[1][1] += maxRadial
+      extent[1][2] += data.radialType === "sphere" ? maxRadial : 0
+
+      // TODO consider particle size
+
+      const maxR = Math.max(...extent[0].map(Math.abs), ...extent[1].map(Math.abs))
+      if (!this.geometry.boundingSphere) {
+        this.geometry.boundingSphere = new THREE.Sphere()
+      }
+      this.geometry.boundingSphere.radius = maxR
+
+      // this does not work correctly if there are multiple particles on an entity
+      if (data.editorObject) {
+        const existingMesh = this.el.getObject3D("mesh")
+
+        if (!existingMesh || existingMesh.isParticlesEditorObject) {
+          // Add a box3 that can be used to make the particle clickable in the inspector (does not work for world
+          // relative particles), and show a bounding box
+          // Provide some min extents 0.25, in case the particle system is very thin
+          let box3 = new THREE.Box3(new THREE.Vector3(...extent[0].map(x => Math.min(x,-0.25))), new THREE.Vector3(...extent[1].map(x => Math.max(x, 0.25))))
+          let box3Mesh = new THREE.Box3Helper(box3, 0xffff00)
+          box3Mesh.visible = false
+          box3Mesh.isParticlesEditorObject = true
+          this.el.setObject3D("mesh", box3Mesh) // the inspector puts a bounding box around the "mesh" object
+        }
+      }
+    },
+
     updateWorldTransform: (function() {
       let position = new THREE.Vector3()
       let quaternion = new THREE.Quaternion()
@@ -480,6 +566,8 @@
             instancePosition = this.geometry.getAttribute("instancePosition")
             instanceQuaternion = this.geometry.getAttribute("instanceQuaternion")
             this.el.object3D.matrixWorld.decompose(position, quaternion, scale)
+
+            this.geometry.boundingSphere.center.copy(position)
           }
 
           let startID = this.nextID
@@ -768,8 +856,8 @@
           transformed = rotScale.w * position.xyz;
           transformed = applyQuaternion( transformed, rotationQuaternion );
 
-          vec3 velocity = ( instanceVelocity + instanceAcceleration * age );
-          vec3 rotationalVelocity = ( instanceAngularVelocity + instanceAngularAcceleration * age );
+          vec3 velocity = ( instanceVelocity + 0.5 * instanceAcceleration * age );
+          vec3 rotationalVelocity = ( instanceAngularVelocity + 0.5 * instanceAngularAcceleration * age );
           vec4 angularQuaternion = eulerToQuaternion( rotationalVelocity * age );
 
           transformed += applyQuaternion( instanceOffset + velocity * age, angularQuaternion );
