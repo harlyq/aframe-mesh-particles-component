@@ -4,18 +4,18 @@
 (function() {
 
   const TIME_PARAM = 0 // [0].x
-  const WORLD_RELATIVE_ID_PARAM = 1 // [0].y
+  const ID_PARAM = 1 // [0].y
   const RADIAL_PARAM = 2 // [0].z
   const DURATION_PARAM = 3 // [0].w
   const SPAWN_TYPE_PARAM = 4 // [1].x
-  const SPAWN_RATE_PARAM = 5 // [1].y
+  const SPAWN_DELTA_PARAM = 5 // [1].y
   const SEED_PARAM = 6 // [1].z
   const PARTICLE_COUNT_PARAM = 7 // [1].w
   const MIN_AGE_PARAM = 8 // [2].x
   const MAX_AGE_PARAM = 9 // [2].y
   const DIRECTION_PARAM = 10 // [2].z
 
-  const RANDOM_REPEAT_COUNT = 262144; // random numbers will start repeating after this number of particles
+  const RANDOM_REPEAT_COUNT = 131072; // random numbers will start repeating after this number of particles
 
   const degToRad = THREE.Math.degToRad
 
@@ -102,13 +102,13 @@
       rotation: { default: "0 0 0" },
       opacity: { default: "1" },
 
+      enable: { default: true },
       direction: { default: "forward", oneOf: ["forward", "backward"], parse: toLowerCase },
       seed: { type: "float", default: -1 },
       overTimeSlots: { type: "int", default: 5 },
       frustumCulled: { default: true },
       geoName: { default: "mesh" },
       geoNumber: { type: "int", min: 1, default: 1 },
-      editorObject: { default: false },
     },
     multiple: true,
     help: "https://github.com/harlyq/aframe-mesh-particles-component",
@@ -136,6 +136,7 @@
       this.nextID = 0
       this.nextTime = 0
       this.relative = this.data.relative // cannot be changed at run-time
+      this.paused = false
     },
 
     remove() {
@@ -146,7 +147,7 @@
 
     update(oldData) {
       const data = this.data
-      let boundsDirty = (data.editorObject !== oldData.editorObject)
+      let boundsDirty = false
 
       if (data.relative !== this.relative) {
         console.error("mesh-particles 'relative' cannot be changed at run-time")
@@ -210,8 +211,8 @@
 
       if (data.spawnRate !== oldData.spawnRate || data.lifeTime !== oldData.lifeTime) {
         this.lifeTime = parseVecRange(data.lifeTime, [1])
-        this.params[SPAWN_RATE_PARAM] = data.spawnRate
-        this.count = Math.max(1, this.lifeTime[1]*data.spawnRate)
+        this.params[SPAWN_DELTA_PARAM] = 1/data.spawnRate
+        this.count = Math.max(1, Math.ceil(this.lifeTime[1]*data.spawnRate))
         this.params[MIN_AGE_PARAM] = this.lifeTime[0]
         this.params[MAX_AGE_PARAM] = this.lifeTime[1]
         this.params[PARTICLE_COUNT_PARAM] = this.count
@@ -228,6 +229,9 @@
     },
 
     tick(time, deltaTime) {
+      if (deltaTime > 100) deltaTime = 100 // ignore long pauses
+      const dt = deltaTime/1000 // dt is in seconds
+
       // for models it may take some time before the original mesh is available, so keep trying
       if (!this.instancedMesh) {
         this.waitingForMeshDebug = (this.waitingForMesh || 0) + deltaTime
@@ -240,9 +244,6 @@
       }
 
       if (this.shader) {
-        if (deltaTime > 100) deltaTime = 100 // ignore long pauses
-        const dt = deltaTime/1000 // dt is in seconds
-
         this.emitterTime += dt
         this.params[TIME_PARAM] = this.emitterTime
 
@@ -251,10 +252,12 @@
     },
 
     pause() {
+      this.paused = true
       this.enablePauseTick(this.data.enableInEditor)
     },
 
     play() {
+      this.paused = false
       this.enablePauseTick(false)
     },
 
@@ -514,21 +517,11 @@
       }
       this.geometry.boundingSphere.radius = maxR
 
-      // this does not work correctly if there are multiple particles on an entity
-      if (data.editorObject) {
-        const existingMesh = this.el.getObject3D("mesh")
-
-        if (!existingMesh || existingMesh.isParticlesEditorObject) {
-          // Add a box3 that can be used to make the particle clickable in the inspector (does not work for world
-          // relative particles), and show a bounding box
-          // Provide some min extents 0.25, in case the particle system is very thin
-          let box3 = new THREE.Box3(new THREE.Vector3(...extent[0].map(x => Math.min(x,-0.25))), new THREE.Vector3(...extent[1].map(x => Math.max(x, 0.25))))
-          let box3Mesh = new THREE.Box3Helper(box3, 0xffff00)
-          box3Mesh.visible = false
-          box3Mesh.isParticlesEditorObject = true
-          this.el.setObject3D("mesh", box3Mesh) // the inspector puts a bounding box around the "mesh" object
-        }
+      if (!this.geometry.boundingBox) {
+        this.geometry.boundingBox = new THREE.Box3()
       }
+      this.geometry.boundingBox.min.set(...extent[0])
+      this.geometry.boundingBox.max.set(...extent[1])
     },
 
     updateWorldTransform: (function() {
@@ -556,6 +549,7 @@
 
           let instancePosition
           let instanceQuaternion
+          let instanceID = this.geometry.getAttribute("instanceID")
           let instanceOffset = this.geometry.getAttribute("instanceOffset")
           let instanceVelocity = this.geometry.getAttribute("instanceVelocity")
           let instanceAcceleration = this.geometry.getAttribute("instanceAcceleration")
@@ -578,7 +572,7 @@
           // is less than this frame's time, keep emitting particles. Note, if the spawnRate is
           // low, we may have to wait several frames before a particle is emitted, but if the 
           // spawnRate is high we will emit several particles per frame
-          while (this.nextTime < emitterTime && numSpawned < this.count) {
+          while (this.nextTime <= emitterTime && numSpawned < this.count) {
             this.randomDir(dir)
             this.randomVec3PlusRadial(this.offset, this.radialOffset, dir, offset)
             this.randomVec3PlusRadial(this.velocity, this.radialVelocity, dir, velocity)
@@ -592,6 +586,7 @@
             }
 
             id = this.nextID
+            instanceID.setX(id, data.enable ? id : -1)
             instanceOffset.setXYZ(id, offset.x, offset.y, offset.z)
             instanceVelocity.setXYZ(id, velocity.x, velocity.y, velocity.z)
             instanceAcceleration.setXYZ(id, acceleration.x, acceleration.y, acceleration.z)
@@ -604,7 +599,7 @@
           }
 
           if (numSpawned > 0) {
-            this.params[WORLD_RELATIVE_ID_PARAM] = id
+            this.params[ID_PARAM] = id
 
             if (isBurst) { // if we did burst emit, then wait for maxAge before emitting again
               this.nextTime += this.lifeTime[1]
@@ -615,16 +610,20 @@
               startID = 0
               numSpawned = this.count
             }
-  
+
             if (isWorldRelative) {
               instancePosition.updateRange.offset = startID
               instancePosition.updateRange.count = numSpawned
               instancePosition.needsUpdate = numSpawned > 0
-  
+
               instanceQuaternion.updateRange.offset = startID
               instanceQuaternion.updateRange.count = numSpawned
               instanceQuaternion.needsUpdate = numSpawned > 0
             }
+
+            instanceID.updateRange.offset = startID
+            instanceID.updateRange.count = numSpawned
+            instanceID.needsUpdate = numSpawned > 0
 
             instanceOffset.updateRange.offset = startID
             instanceOffset.updateRange.count = numSpawned
@@ -656,222 +655,9 @@
       shader.uniforms.rotationScaleOverTime = { value: this.rotationScaleOverTime }
 
       // WARNING these shader replacements assume that the standard three.js shders are being used
-      shader.vertexShader = shader.vertexShader.replace( "void main() {", `
-        attribute float instanceID;
-        attribute vec3 instanceOffset;
-        attribute vec3 instanceVelocity;
-        attribute vec3 instanceAcceleration;
-        attribute vec3 instanceAngularVelocity;
-        attribute vec3 instanceAngularAcceleration;
-
-        #if defined(WORLD_RELATIVE)
-        attribute vec3 instancePosition;
-        attribute vec4 instanceQuaternion;
-        #endif
-
-        uniform vec4 params[3];
-        uniform vec4 colorOverTime[OVER_TIME_ARRAY_LENGTH];
-        uniform vec4 rotationScaleOverTime[OVER_TIME_ARRAY_LENGTH];
-
-        varying vec4 vInstanceColor;
-
-        // each call to random will produce a different result by varying randI
-        float randI = 0.0;
-        float random( const float seed )
-        {
-          randI += 0.001;
-          return rand( vec2( seed, randI ));
-        }
-
-        vec3 randVec3Range( const vec3 range0, const vec3 range1, const float seed )
-        {
-          vec3 lerps = vec3( random( seed ), random( seed ), random( seed ) );
-          return mix( range0, range1, lerps );
-        }
-
-        float randFloatRange( const float range0, const float range1, const float seed )
-        {
-          float lerps = random( seed );
-          return mix( range0, range1, lerps );
-        }
-
-        // array lengths are stored in the first slot, followed by actual values from slot 1 onwards
-        // colors are packed min,max,min,max,min,max,...
-        // color is packed in xyz and opacity in w, and they may have different length arrays
-
-        vec4 calcColorOverTime( const float r, const float seed )
-        {
-          vec3 color = vec3(1.0);
-          float opacity = 1.0;
-          int colorN = int( colorOverTime[0].x );
-          int opacityN = int( colorOverTime[0].y );
-  
-          if ( colorN == 1 )
-          {
-            color = randVec3Range( colorOverTime[1].xyz, colorOverTime[2].xyz, seed );
-          }
-          else if ( colorN > 1 )
-          {
-            float ck = r * ( float( colorN ) - 1.0 );
-            float ci = floor( ck );
-            int i = int( ci )*2 + 1;
-            vec3 sColor = randVec3Range( colorOverTime[i].xyz, colorOverTime[i + 1].xyz, seed );
-            vec3 eColor = randVec3Range( colorOverTime[i + 2].xyz, colorOverTime[i + 3].xyz, seed );
-            color = mix( sColor, eColor, ck - ci );
-          }
-
-          if ( opacityN == 1 )
-          {
-            opacity = randFloatRange( colorOverTime[1].w, colorOverTime[2].w, seed );
-          }
-          else if ( opacityN > 1 )
-          {
-            float ok = r * ( float( opacityN ) - 1.0 );
-            float oi = floor( ok );
-            int j = int( oi )*2 + 1;
-            float sOpacity = randFloatRange( colorOverTime[j].w, colorOverTime[j + 1].w, seed );
-            float eOpacity = randFloatRange( colorOverTime[j + 2].w, colorOverTime[j + 3].w, seed );
-            opacity = mix( sOpacity, eOpacity, ok - oi );
-          }
-
-          return vec4( color, opacity );
-        }
-
-        // as per calcColorOverTime but euler rotation is packed in xyz and scale in w
-
-        vec4 calcRotationScaleOverTime( const float r, const float seed )
-        {
-          vec3 rotation = vec3(0.);
-          float scale = 1.0;
-          int rotationN = int( rotationScaleOverTime[0].x );
-          int scaleN = int( rotationScaleOverTime[0].y );
-
-          if ( rotationN == 1 )
-          {
-            rotation = randVec3Range( rotationScaleOverTime[1].xyz, rotationScaleOverTime[2].xyz, seed );
-          }
-          else if ( rotationN > 1 )
-          {
-            float rk = r * ( float( rotationN ) - 1.0 );
-            float ri = floor( rk );
-            int i = int( ri )*2 + 1; // *2 because each range is 2 vectors, and +1 because the first vector is for the length info
-            vec3 sRotation = randVec3Range( rotationScaleOverTime[i].xyz, rotationScaleOverTime[i + 1].xyz, seed );
-            vec3 eRotation = randVec3Range( rotationScaleOverTime[i + 2].xyz, rotationScaleOverTime[i + 3].xyz, seed );
-            rotation = mix( sRotation, eRotation, rk - ri );
-          }
-
-          if ( scaleN == 1 )
-          {
-            scale = randFloatRange( rotationScaleOverTime[1].w, rotationScaleOverTime[2].w, seed );
-          }
-          else if ( scaleN > 1 )
-          {
-            float sk = r * ( float( scaleN ) - 1.0 );
-            float si = floor( sk );
-            int j = int( si )*2 + 1; // *2 because each range is 2 vectors, and +1 because the first vector is for the length info
-            float sScale = randFloatRange( rotationScaleOverTime[j].w, rotationScaleOverTime[j + 1].w, seed );
-            float eScale = randFloatRange( rotationScaleOverTime[j + 2].w, rotationScaleOverTime[j + 3].w, seed );
-            scale = mix( sScale, eScale, sk - si );
-          }
-
-          return vec4( rotation, scale );
-        }
-
-        // assumes euler order is YXZ (standard convention for AFrame)
-        vec4 eulerToQuaternion( const vec3 euler )
-        {
-          // from https://github.com/mrdoob/three.js/blob/master/src/math/Quaternion.js
-
-          vec3 c = cos( euler * 0.5 );
-          vec3 s = sin( euler * 0.5 );
-
-          return vec4(
-            s.x * c.y * c.z + c.x * s.y * s.z,
-            c.x * s.y * c.z - s.x * c.y * s.z,
-            c.x * c.y * s.z - s.x * s.y * c.z,
-            c.x * c.y * c.z + s.x * s.y * s.z
-          );
-        }
-
-        vec3 applyQuaternion( const vec3 v, const vec4 q )
-        {
-          return v + 2.0 * cross( q.xyz, cross( q.xyz, v ) + q.w * v );
-        }
-
-        void main() {
-          float time = params[0].x;
-          float ID0 = params[0].y;
-          float radialType = params[0].z;
-          float duration = params[0].w;
-          float spawnType = params[1].x;
-          float spawnRate = params[1].y;
-          float baseSeed = params[1].z;
-          float instanceCount = params[1].w;
-          float minAge = params[2].x;
-          float maxAge = params[2].y;
-          float direction = params[2].z; // 0 is forward, 1 is backward
-
-          // particles are either emitted in a burst (spawnType == 0) or spread evenly
-          // throughout 0..maxAge.  We calculate the ID of the last spawned particle ID0 
-          // for this frame, any instance IDs after ID0 are assumed to belong to the previous loop
-
-          float loop = floor( time / maxAge ) - spawnType * (instanceID > ID0 ? 1.0 : 0.0);
-          float startTime = loop * maxAge + instanceID / spawnRate * spawnType;
-          float age = startTime >= 0.0 ? time - startTime : -1.0; // if age is -1 we won't show the particle
-
-          // we use the id as a seed for the randomizer, but because the IDs are fixed in 
-          // the range 0..instanceCount we calculate a virtual ID by taking into account
-          // the number of loops that have occurred (note, instanceIDs above ID0 are assumed 
-          // to be in the previous loop).  We use the modoulo of the RANDOM_REPEAT_COUNT to
-          // ensure that the virtualID doesn't exceed the floating point precision
-
-          float virtualID = mod( instanceID + loop * instanceCount, float( RANDOM_REPEAT_COUNT ) );
-          float seed = mod(1664525.*virtualID*(baseSeed*11.) + 1013904223., 4294967296.)/4294967296.; // we don't have enough precision in 32-bit float, but results look ok
-
-          float lifeTime = randFloatRange( minAge, maxAge, seed ); 
-
-          // don't show particles that would be emitted after the duration
-          if ( duration > 0.0 && time - age >= duration ) 
-          {
-            age = -1.0;
-          }
-          else
-          {
-            age = age + direction * ( maxAge - 2.0 * age );
-          }
-
-          // the ageRatio will be used for the lerps on over-time attributes
-          float ageRatio = age/lifeTime;
-      `)
-
-      shader.vertexShader = shader.vertexShader.replace( "#include <begin_vertex>", `
-        vec3 transformed = vec3(0.0);
-        vInstanceColor = vec4(1.0);
-
-        if ( ageRatio >= 0.0 && ageRatio <= 1.0 ) 
-        {
-          vec4 rotScale = calcRotationScaleOverTime( ageRatio, seed );
-          vec4 rotationQuaternion = eulerToQuaternion( rotScale.xyz );
-
-          transformed = rotScale.w * position.xyz;
-          transformed = applyQuaternion( transformed, rotationQuaternion );
-
-          vec3 velocity = ( instanceVelocity + 0.5 * instanceAcceleration * age );
-          vec3 rotationalVelocity = ( instanceAngularVelocity + 0.5 * instanceAngularAcceleration * age );
-          vec4 angularQuaternion = eulerToQuaternion( rotationalVelocity * age );
-
-          transformed += applyQuaternion( instanceOffset + velocity * age, angularQuaternion );
-
-        #if defined(WORLD_RELATIVE)
-        
-          transformed += 2.0 * cross( instanceQuaternion.xyz, cross( instanceQuaternion.xyz, transformed ) + instanceQuaternion.w * transformed );
-          transformed += instancePosition;
-
-        #endif
-
-          vInstanceColor = calcColorOverTime( ageRatio, seed ); // rgba format
-        }
-      `)
+      shader.vertexShader = shader.vertexShader.replace( "void main() {", MESH_PARTICLES_VERTEX_SHADER )
+      
+      shader.vertexShader = shader.vertexShader.replace( "#include <begin_vertex>", "" ) // transformed is calculated in MESH_PARTICLES_VERTEX_SHADER
 
       shader.fragmentShader = shader.fragmentShader.replace( "void main() {", `
         varying vec4 vInstanceColor;
@@ -890,6 +676,226 @@
       this.shader = shader
     },
   })
+
+const MESH_PARTICLES_VERTEX_SHADER = `
+attribute float instanceID;
+attribute vec3 instanceOffset;
+attribute vec3 instanceVelocity;
+attribute vec3 instanceAcceleration;
+attribute vec3 instanceAngularVelocity;
+attribute vec3 instanceAngularAcceleration;
+
+#if defined(WORLD_RELATIVE)
+attribute vec3 instancePosition;
+attribute vec4 instanceQuaternion;
+#endif
+
+uniform vec4 params[3];
+uniform vec4 colorOverTime[OVER_TIME_ARRAY_LENGTH];
+uniform vec4 rotationScaleOverTime[OVER_TIME_ARRAY_LENGTH];
+
+varying vec4 vInstanceColor;
+
+// each call to random will produce a different result by varying randI
+float randI = 0.0;
+float random( const float seed )
+{
+  randI += 0.001;
+  return rand( vec2( seed, randI ));
+}
+
+vec3 randVec3Range( const vec3 range0, const vec3 range1, const float seed )
+{
+  vec3 lerps = vec3( random( seed ), random( seed ), random( seed ) );
+  return mix( range0, range1, lerps );
+}
+
+float randFloatRange( const float range0, const float range1, const float seed )
+{
+  float lerps = random( seed );
+  return mix( range0, range1, lerps );
+}
+
+// array lengths are stored in the first slot, followed by actual values from slot 1 onwards
+// colors are packed min,max,min,max,min,max,...
+// color is packed in xyz and opacity in w, and they may have different length arrays
+
+vec4 calcColorOverTime( const float r, const float seed )
+{
+  vec3 color = vec3(1.0);
+  float opacity = 1.0;
+  int colorN = int( colorOverTime[0].x );
+  int opacityN = int( colorOverTime[0].y );
+
+  if ( colorN == 1 )
+  {
+    color = randVec3Range( colorOverTime[1].xyz, colorOverTime[2].xyz, seed );
+  }
+  else if ( colorN > 1 )
+  {
+    float ck = r * ( float( colorN ) - 1.0 );
+    float ci = floor( ck );
+    int i = int( ci )*2 + 1;
+    vec3 sColor = randVec3Range( colorOverTime[i].xyz, colorOverTime[i + 1].xyz, seed );
+    vec3 eColor = randVec3Range( colorOverTime[i + 2].xyz, colorOverTime[i + 3].xyz, seed );
+    color = mix( sColor, eColor, ck - ci );
+  }
+
+  if ( opacityN == 1 )
+  {
+    opacity = randFloatRange( colorOverTime[1].w, colorOverTime[2].w, seed );
+  }
+  else if ( opacityN > 1 )
+  {
+    float ok = r * ( float( opacityN ) - 1.0 );
+    float oi = floor( ok );
+    int j = int( oi )*2 + 1;
+    float sOpacity = randFloatRange( colorOverTime[j].w, colorOverTime[j + 1].w, seed );
+    float eOpacity = randFloatRange( colorOverTime[j + 2].w, colorOverTime[j + 3].w, seed );
+    opacity = mix( sOpacity, eOpacity, ok - oi );
+  }
+
+  return vec4( color, opacity );
+}
+
+// as per calcColorOverTime but euler rotation is packed in xyz and scale in w
+
+vec4 calcRotationScaleOverTime( const float r, const float seed )
+{
+  vec3 rotation = vec3(0.);
+  float scale = 1.0;
+  int rotationN = int( rotationScaleOverTime[0].x );
+  int scaleN = int( rotationScaleOverTime[0].y );
+
+  if ( rotationN == 1 )
+  {
+    rotation = randVec3Range( rotationScaleOverTime[1].xyz, rotationScaleOverTime[2].xyz, seed );
+  }
+  else if ( rotationN > 1 )
+  {
+    float rk = r * ( float( rotationN ) - 1.0 );
+    float ri = floor( rk );
+    int i = int( ri )*2 + 1; // *2 because each range is 2 vectors, and +1 because the first vector is for the length info
+    vec3 sRotation = randVec3Range( rotationScaleOverTime[i].xyz, rotationScaleOverTime[i + 1].xyz, seed );
+    vec3 eRotation = randVec3Range( rotationScaleOverTime[i + 2].xyz, rotationScaleOverTime[i + 3].xyz, seed );
+    rotation = mix( sRotation, eRotation, rk - ri );
+  }
+
+  if ( scaleN == 1 )
+  {
+    scale = randFloatRange( rotationScaleOverTime[1].w, rotationScaleOverTime[2].w, seed );
+  }
+  else if ( scaleN > 1 )
+  {
+    float sk = r * ( float( scaleN ) - 1.0 );
+    float si = floor( sk );
+    int j = int( si )*2 + 1; // *2 because each range is 2 vectors, and +1 because the first vector is for the length info
+    float sScale = randFloatRange( rotationScaleOverTime[j].w, rotationScaleOverTime[j + 1].w, seed );
+    float eScale = randFloatRange( rotationScaleOverTime[j + 2].w, rotationScaleOverTime[j + 3].w, seed );
+    scale = mix( sScale, eScale, sk - si );
+  }
+
+  return vec4( rotation, scale );
+}
+
+// assumes euler order is YXZ (standard convention for AFrame)
+vec4 eulerToQuaternion( const vec3 euler )
+{
+  // from https://github.com/mrdoob/three.js/blob/master/src/math/Quaternion.js
+
+  vec3 c = cos( euler * 0.5 );
+  vec3 s = sin( euler * 0.5 );
+
+  return vec4(
+    s.x * c.y * c.z + c.x * s.y * s.z,
+    c.x * s.y * c.z - s.x * c.y * s.z,
+    c.x * c.y * s.z - s.x * s.y * c.z,
+    c.x * c.y * c.z + s.x * s.y * s.z
+  );
+}
+
+vec3 applyQuaternion( const vec3 v, const vec4 q )
+{
+  return v + 2.0 * cross( q.xyz, cross( q.xyz, v ) + q.w * v );
+}
+
+void main() {
+  float time = params[0].x;
+  float ID0 = params[0].y;
+  float radialType = params[0].z;
+  float duration = params[0].w;
+  float spawnType = params[1].x;
+  float spawnDelta = params[1].y;
+  float baseSeed = params[1].z;
+  float instanceCount = params[1].w;
+  float minAge = params[2].x;
+  float maxAge = params[2].y;
+  float loopTime = instanceCount * spawnDelta;
+  float direction = params[2].z; // 0 is forward, 1 is backward
+  float age = -1.0;
+  float ageRatio = -1.0;
+  float seed = 0.0;
+
+  if (instanceID >= 0.0) {
+    // particles are either emitted in a burst (spawnType == 0) or spread evenly
+    // throughout 0..loopTime (spawnType == 1).  We calculate the ID of the last spawned particle ID0 
+    // for this frame, any instance IDs after ID0 are assumed to belong to the previous loop
+
+    float loop = floor( time / loopTime ) - spawnType * (instanceID > ID0 ? 1.0 : 0.0);
+    float startTime = loop * loopTime + instanceID * spawnDelta * spawnType;
+    age = startTime >= 0.0 ? time - startTime : -1.0; // if age is -1 we won't show the particle
+
+    // we use the id as a seed for the randomizer, but because the IDs are fixed in 
+    // the range 0..instanceCount we calculate a virtual ID by taking into account
+    // the number of loops that have occurred (note, instanceIDs above ID0 are assumed 
+    // to be in the previous loop).  We use the modoulo of the RANDOM_REPEAT_COUNT to
+    // ensure that the virtualID doesn't exceed the floating point precision
+
+    float virtualID = mod( instanceID + loop * instanceCount, float( RANDOM_REPEAT_COUNT ) );
+    seed = mod(1664525.*virtualID*(baseSeed*11.) + 1013904223., 4294967296.)/4294967296.; // we don't have enough precision in 32-bit float, but results look ok
+
+    float lifeTime = randFloatRange( minAge, maxAge, seed ); 
+
+    // don't show particles that would be emitted after the duration
+    if ( duration > 0.0 && time - age >= duration ) 
+    {
+      age = -1.0;
+    }
+    else
+    {
+      age = age + direction * ( loopTime - 2.0 * age );
+    }
+
+    // the ageRatio will be used for the lerps on over-time attributes
+    ageRatio = age/lifeTime;
+  }
+
+vec3 transformed = vec3(0.0);
+vInstanceColor = vec4(1.0);
+
+if ( ageRatio >= 0.0 && ageRatio <= 1.0 ) 
+{
+  vec4 rotScale = calcRotationScaleOverTime( ageRatio, seed );
+  vec4 rotationQuaternion = eulerToQuaternion( rotScale.xyz );
+
+  transformed = rotScale.w * position.xyz;
+  transformed = applyQuaternion( transformed, rotationQuaternion );
+
+  vec3 velocity = ( instanceVelocity + 0.5 * instanceAcceleration * age );
+  vec3 rotationalVelocity = ( instanceAngularVelocity + 0.5 * instanceAngularAcceleration * age );
+  vec4 angularQuaternion = eulerToQuaternion( rotationalVelocity * age );
+
+  transformed += applyQuaternion( instanceOffset + velocity * age, angularQuaternion );
+
+#if defined(WORLD_RELATIVE)
+
+  transformed += 2.0 * cross( instanceQuaternion.xyz, cross( instanceQuaternion.xyz, transformed ) + instanceQuaternion.w * transformed );
+  transformed += instancePosition;
+
+#endif
+
+  vInstanceColor = calcColorOverTime( ageRatio, seed ); // rgba format
+}`
 
 })()
 

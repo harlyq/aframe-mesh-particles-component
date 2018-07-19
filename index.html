@@ -33,11 +33,11 @@
           <a-text mixin="label" value="color over-time"></a-text>
         </a-entity>
         <a-entity position="-6 4 0">
-          <a-triangle material="side: double" mesh-particles="spawnRate: 10; lifeTime: 3; position: -2 2 -2..2 2 2; acceleration: 0 -.4 0..0 -.2 0; angularVelocity: -20 0 0..20 0 0; scale: .1...25; color: red..orange; rotation: 75 -45 0..105 45 0,75 -15 0..105 15 0,90 0 0..45 45 0"></a-triangle>
+          <a-plane material="side: double" mesh-particles="spawnRate: 10; lifeTime: 3; position: -2 2 -2..2 2 2; acceleration: 0 -.4 0..0 -.2 0; angularVelocity: -20 0 0..20 0 0; scale: .1...25; color: red..orange; rotation: 75 -45 0..105 45 0,75 -15 0..105 15 0,90 0 0..45 45 0"></a-plane>
           <a-text mixin="label" value="initial position"></a-text>
         </a-entity>
         <a-entity position="6 4 0">
-          <a-ring material="color: blue; side: double" rotation="90 0 0" mesh-particles="spawnRate: 0.7; lifeTime: 3; scale: 0,1; opacity: 1,0"></a-ring>
+          <a-ring material="color: blue; side: double" mesh-particles="spawnRate: 0.7; lifeTime: 3; scale: 0,1; opacity: 1,0;"></a-ring>
           <a-text mixin="label" value="scale over-time"></a-text>
         </a-entity>
         <a-entity position="0 -4 0">
@@ -45,13 +45,13 @@
           <a-text mixin="label" value="angular motion"></a-text>
         </a-entity>
         <a-entity position="-6 -4 0">
-          <a-plane id="raindash" material="src:#blob; transparent: true" scale="0.1 2 0.1" visible="false"></a-plane>
+          <a-plane id="raindash" material="src:#blob; transparent: true; side: double" scale="0.1 2 0.1" visible="false"></a-plane>
           <a-entity mesh-particles="entity: #raindash; spawnRate: 50; lifeTime: 0.1..0.15; position: -2 1 -2..2 1 2; velocity: 0 -20 0..1 -20 0; scale: .8..1.2; opacity: .4; color: #224"></a-entity>
           <a-text mixin="label" value="use entity"></a-text>
         </a-entity>
         <a-entity position="6 -4 0">
           <a-box mesh-particles="spawnRate: 2000; lifeTime: 2; radialType: sphere; radialPosition: 1; scale: .01...02; opacity: 0,1,0; color: #ddd..white"></a-box>
-          <a-text mixin="label" value="spherical"></a-text>
+          <a-text mixin="label" value="thousands"></a-text>
         </a-entity>
         <a-entity position="6 -8 0">
           <a-sphere id="sphere" scale="0.2 0.2 0.2" opacity="0.5" visible="false"></a-sphere>
@@ -62,6 +62,18 @@
         <a-entity position="0 -8 0">
           <a-box rotation="90 0 0" mesh-particles="direction: backwards; spawnRate: 50; lifeTime: 0.5..1; spawnType: burst; radialPosition: .1; radialVelocity: 2..5; velocity: 0 0 -1..0 0 -2; acceleration: 0 0 1; scale: .1..0.3; rotation: -45 -45 -45..45 45 45; opacity: 1,1,1,1,0"></a-box>
           <a-text mixin="label" value="backwards radial motion"></a-text>
+        </a-entity>
+        <a-entity position="-6 -8 0">
+          <a-torus-knot id="toggle" color="purple" mesh-particles="spawnRate: 100; lifeTime: 2; position: -1 -1 0..1 1 0; scale: 0.05..0.1,0.2,0; rotation: -45 -45 -45..45 45 45"></a-torus-knot>
+          <a-text mixin="label" value="enable/disable"></a-text>
+          <script>
+            let id = document.getElementById("toggle")
+            let enable = true
+            setInterval(() => {
+              enable = !enable
+              id.setAttribute("mesh-particles", {enable})
+            }, 5000)
+          </script>
         </a-entity>
       </a-entity>
     </a-scene>
