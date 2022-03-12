@@ -441,23 +441,23 @@
     updateAttributes() {
       if (this.geometry) {
         const n = this.count
-        this.geometry.maxInstancedCount = n
+        this.geometry.instanceCount = n
 
         let instanceIDs = new Float32Array(n)
         for (let i = 0; i  < n; i++) {
           instanceIDs[i] = i
         }
 
-        this.geometry.addAttribute("instanceID", new THREE.InstancedBufferAttribute(instanceIDs, 1)) // gl_InstanceID is not supported, so make our own id
-        this.geometry.addAttribute("instanceOffset", new THREE.InstancedBufferAttribute(new Float32Array(3*n).fill(0), 3))
-        this.geometry.addAttribute("instanceVelocity", new THREE.InstancedBufferAttribute(new Float32Array(3*n).fill(0), 3))
-        this.geometry.addAttribute("instanceAcceleration", new THREE.InstancedBufferAttribute(new Float32Array(3*n).fill(0), 3))
-        this.geometry.addAttribute("instanceAngularVelocity", new THREE.InstancedBufferAttribute(new Float32Array(3*n).fill(0), 3))
-        this.geometry.addAttribute("instanceAngularAcceleration", new THREE.InstancedBufferAttribute(new Float32Array(3*n).fill(0), 3))
+        this.geometry.setAttribute("instanceID", new THREE.InstancedBufferAttribute(instanceIDs, 1)) // gl_InstanceID is not supported, so make our own id
+        this.geometry.setAttribute("instanceOffset", new THREE.InstancedBufferAttribute(new Float32Array(3*n).fill(0), 3))
+        this.geometry.setAttribute("instanceVelocity", new THREE.InstancedBufferAttribute(new Float32Array(3*n).fill(0), 3))
+        this.geometry.setAttribute("instanceAcceleration", new THREE.InstancedBufferAttribute(new Float32Array(3*n).fill(0), 3))
+        this.geometry.setAttribute("instanceAngularVelocity", new THREE.InstancedBufferAttribute(new Float32Array(3*n).fill(0), 3))
+        this.geometry.setAttribute("instanceAngularAcceleration", new THREE.InstancedBufferAttribute(new Float32Array(3*n).fill(0), 3))
 
         if (this.relative === "world") {
-          this.geometry.addAttribute("instancePosition", new THREE.InstancedBufferAttribute(new Float32Array(3*n).fill(0), 3))
-          this.geometry.addAttribute("instanceQuaternion", new THREE.InstancedBufferAttribute(new Float32Array(4*n).fill(0), 4))
+          this.geometry.setAttribute("instancePosition", new THREE.InstancedBufferAttribute(new Float32Array(3*n).fill(0), 3))
+          this.geometry.setAttribute("instanceQuaternion", new THREE.InstancedBufferAttribute(new Float32Array(4*n).fill(0), 4))
         }
       }
     },
